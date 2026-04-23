@@ -1,0 +1,355 @@
+
+------------------------------------------------------------------------
+
+		 tRIBS Distributed Hydrologic Model
+		 TIN-based Real-time Integrated Basin Simulator 
+
+------------------------------------------------------------------------
+
+
+tRIBS Version 5.3.0, Summer 2025
+
+
+
+Part 1: Read Input Parameters from 'SMF_calibration.in'
+---------------------------------------------------
+Parameter =   OPTGROUNDWATER			1
+Parameter =   OPTSPATIAL			0
+Parameter =   OPTINTERHYDRO			0
+Parameter =   OPTHEADER			1
+Parameter =   STARTDATE			08/01/2014/00/00
+Parameter =   RUNTIME			480
+Parameter =   TIMESTEP			3.75
+Parameter =   GWSTEP			30
+Parameter =   METSTEP			60
+Parameter =   RAININTRVL			0.25
+Parameter =   OPINTRVL			1
+Parameter =   SPOPINTRVL			50000
+Parameter =   INTSTORMMAX			10000
+Parameter =   TLINKE			2.5
+Parameter =   BASEFLOW			0.2
+Parameter =   VELOCITYCOEF			1.2
+Parameter =   VELOCITYRATIO			60
+Parameter =   KINEMVELCOEF			3
+Parameter =   FLOWEXP			0.3
+Parameter =   CHANNELROUGHNESS			0.04
+Parameter =   CHANNELWIDTHCOEFF			2.33
+Parameter =   CHANNELWIDTHEXPNT			0.54
+Parameter =   CHANNELWIDTHFILE			
+Parameter =   WIDTHINTERPOLATION			0
+Parameter =   OPTEVAPOTRANS			1
+Parameter =   OPTINTERCEPT			2
+Parameter =   GFLUXOPTION			2
+Parameter =   OPTSNOW			1
+Parameter =   MINSNTEMP			-50
+Parameter =   SNLIQFRAC			0.065
+Parameter =   OPTRADSHELT			0
+Parameter =   OPTMESHINPUT			1
+Parameter =   RAINSOURCE			3
+Parameter =   METDATAOPTION			1
+Parameter =   OPTLANDUSE			0
+Parameter =   CONVERTDATA			0
+Parameter =   OPTBEDROCK			1
+Parameter =   FORECASTMODE			0
+Parameter =   STOCHASTICMODE			0
+Parameter =   OPTRESERVOIR			0
+Parameter =   OPTSOILTYPE			0
+Parameter =   INPUTDATAFILE			../smf_init_data/mesh/SMF_mesh
+Parameter =   INPUTTIME			0
+Parameter =   SOILTABLENAME			data/model/soil/soils.sdt
+Parameter =   SOILMAPNAME			data/model/soil/ADOT_SoilTypes.asc
+Parameter =   LANDTABLENAME			data/model/land/land_use_params.ldt
+Parameter =   LANDMAPNAME			data/model/land/LandUse.asc
+Parameter =   GWATERFILE			data/model/soil/InitGW_95pct_mm.asc
+Parameter =   OPTRADSHELT			0
+Parameter =   GAUGESTATIONS			../smf_init_data/met/Master_Precip.sdf
+Parameter =   RAINDISTRIBUTION			0
+Parameter =   BEDROCKFILE			data/model/soil/SOLUS_Bedrock_m.asc
+Parameter =   HYDROMETSTATIONS			../smf_init_data/met/Master_Met.sdf
+Parameter =   TEMPLAPSE			-0.0065
+Parameter =   PRECLAPSE			0
+Parameter =   HILLALBOPT			0
+Parameter =   OUTFILENAME			results/SMF_calibration
+Parameter =   OUTHYDROFILENAME			results/SMF_calibration
+Parameter =   OUTHYDROEXTENSION			mrf
+Parameter =   NODEOUTPUTLIST			data/model/pnodes.dat
+Parameter =   HYDRONODELIST			
+Parameter =   OUTLETNODELIST			data/model/qnodes.dat
+Parameter =   RESTARTMODE			0
+Parameter =   PARALLELMODE			0
+Parameter =   OPTVIZ			0
+
+Input File Keywords Checked...
+
+Start TIME: 	YEAR	MONTH	DAY	HOUR	MINUTE
+		2014	8	1	0	0
+
+Total TIME:	 480 hours
+
+End TIME: 	YEAR	MONTH	DAY	HOUR	MINUTE
+		2014	8	21	0	0
+
+Output INTERVAL: 			1 hours
+
+Spatial Output INTERVAL: 		50000 hours
+Rainfall Input TIME STEP: 		0.25 hours
+Meteorological Input TIME STEP: 	1 hours
+Unsaturated zone TIME STEP: 		3.75 minutes
+Saturated Zone TIME STEP: 		30 minutes
+
+
+Part 2: Creating Mesh from Existing Mesh (Option 1)
+---------------------------------------------------
+
+Creating tListInputData for reading in existing mesh...
+
+Reading in existing mesh files for input time slice = 0: 
+'../smf_init_data/mesh/SMF_mesh.nodes'
+'../smf_init_data/mesh/SMF_mesh.edges'
+'../smf_init_data/mesh/SMF_mesh.tri'
+'../smf_init_data/mesh/SMF_mesh.z'
+
+Creating node list...
+
+Creating edge list...
+
+Setting up spoke lists...
+
+Setting up CCW edges...
+
+Setting up triangle connectivity...
+
+Testing Mesh...
+
+MakeMeshFromInputData Successful Using Option 1
+
+
+Part 3: Creating Stream Network from Mesh 
+---------------------------------------------
+
+Calculating slopes...
+
+Initializing flow directions...
+
+Computing flow directions...
+
+Correcting sinks...
+
+Sorting nodes by network order...
+
+Renumbering nodes, edges, triangles...
+
+Setting basin outlet and stream reaches...
+
+Basin outlet node determined...
+
+Connect stream nodes by weighted short path...
+
+Sorting stream nodes completed...
+
+Outlet contributing area:	5.630057 km^2
+
+Derived stream reaches...
+
+Initialize velocities and time...
+
+
+Flow Characteristics: 
+
+The  Total  Basin  Area is   	5630056.872211 M^2
+Maximum travel time: 		14.762715 hours
+Maximum hillslope path: 	992.402449 meters
+Maximum stream path: 		4230.781202 meters
+
+
+Checking drainage widths...
+tFlowNet: Checking Voronoi drainage widths...
+
+Set reach numbers...
+
+Hillslope velocity: 		0.020000 m/sec
+Stream velocity: 		1.200000 m/sec
+Hydrograph array size: 		495
+
+Flow Output Files:
+
+Hydrograph File Name: 		'results/SMF_calibration'
+Hydrograph Outlet Name: 		         SMF_calibration
+Hydrograph File Extension: 	mrf
+
+Channel Characteristics:
+
+Kinematic velocity coefficient: 3.000000
+Roughness coefficient: 		0.040000
+Channel width: 			Variable
+
+Channel widths determined from geomorphic relations...
+Parameter =   OPTRESERVOIR			0.000000
+Parameter =   TIMESTEP			3.750000
+Parameter =   RUNTIME			480.000000
+
+
+Part 4: Creating Resampling Object
+--------------------------------------
+
+tResample: Making boundary polygons...
+
+
+Total Number of Nodes: 		3585
+
+tResample: Making interior polygons...
+
+
+Part 4a: Creating Sheltering Object for DEM Input
+----------------------------------------------------
+
+tResample: Making boundary polygons...
+
+
+Total Number of Nodes: 		3585
+
+tResample: Making interior polygons...
+
+
+Part 5: Creating Output Files from 'SMF_calibration.in'
+------------------------------------------
+
+Output Files:
+
+
+Node of Interest ID: 	1960 has been set up...
+
+Node of Interest ID: 	1547 has been set up...
+
+Node of Interest ID: 	3082 has been set up...
+
+Outlet of Interest ID: 	3202 has been set up...
+
+
+Part 6: Creating Hydrologic System
+--------------------------------------
+
+Resampling soil and land use grids...
+
+Hydrologic Options: 
+
+Evapotranspiration Option: 	1
+Interception Option: 		2
+Ground Heat Flux Option: 	2
+Bedrock Depth Option: 		1
+
+Resampling groundwater table grid...
+
+Resampling depth to bedrock grid...
+
+HydroNodeList File  not found.
+	Warning: The file with hydro node IDs does not exist. No output will be written.
+
+Creating Rainfall Setup...
+Rainfall Source: 		Raingauge Stations
+
+Reading Rain Gauge Station File '../smf_init_data/met/Master_Precip.sdf'...
+
+Reading RainGauge Data File '../smf_init_data/met/precip_SMF_1.mdf'...
+
+Reading RainGauge Data File '../smf_init_data/met/precip_SMPHQ_2.mdf'...
+
+Creating EvapoTranspiration Setup...
+
+Creating Interception Setup...
+
+Initializing SnowPack setup... 
+
+Creating Restart setup...
+
+
+Part 7: Creating and Initializing Simulation
+------------------------------------------------
+
+
+tOutput Characteristics:
+
+Number of nodes: 		3585
+Number of edges: 		21130
+Number of triangles: 		6981
+Number of active nodes: 	3398
+Number of active edges: 	19890
+
+Node of Interest ID: 	1960 has been set up...
+
+Node of Interest ID: 	1547 has been set up...
+
+Node of Interest ID: 	3082 has been set up...
+
+Reading HydroMeteorological Station File '../smf_init_data/met/Master_Met.sdf'...
+
+Reading HydroMeteorological Data File '../smf_init_data/met/met_SMF_1.mdf'...
+
+Reading HydroMeteorological Data File '../smf_init_data/met/met_SMPHQ_2.mdf'...
+
+Using ID Land-Use Map
+
+
+Part 8: Hydrologic Simulation Loop
+--------------------------------------
+
+Hydrologic Simulation begins...
+
+
+	Initial Estimates
+-----------------------------------
+ tRIBS Water Balance Calculations
+
+ Basin Rainfall = 0.000000 (m3)
+ Basin Evaporation = 152.557673 (m3)
+ Basin Runoff = 0.000000 (m3)
+ Basin Canopy Storage = 0.000000 (m3)
+ Basin Unsaturated Zone Storage = 826.577121 (m3)
+ Basin Saturated Zone Storage = 47.041655 (m3)
+-----------------------------------
+
+
+
+Creating Hydrograph Output: 'results/SMF_calibration0480_00.mrf'
+Creating Runoff Type Output: 'results/SMF_calibration0480_00.rft'
+
+	HOUR = 480	MINUTE = 0
+
+Simulation completed...
+
+
+
+Part 9: Deleting Objects and Exiting Program
+------------------------------------------------
+
+Simulator Object has been destroyed...
+tSnowPack Object has been destroyed...
+tEvapoTrans Object has been destroyed...
+tIntercept Object has been destroyed...
+tEvapoTrans Object has been destroyed...
+tRainfall Object has been destroyed...
+tStorm Object has been destroyed...
+tHydroModel Object has been destroyed...
+tWaterBalance Object has been destroyed...
+tCOutput Object has been destroyed...
+tOutput Object has been destroyed...
+tShelter Object Destroyed...
+tResample Object has been destroyed...
+tResample Object has been destroyed...
+tKinemat Object has been destroyed...
+tPreProcess Object has been destroyed...
+tFlowResults Object has been destroyed...
+tFlowNet Object has been destroyed...
+tMesh Object has been destroyed...
+tPreProcess Object has been destroyed...
+tInputFile Object has been destroyed...
+SimulationControl Object has been destroyed...
+
+------------------------------------------------------------------------
+
+		 tRIBS Distributed Hydrologic Model
+		 TIN-based Real-time Integrated Basin Simulator
+		 Ralph M. Parsons Laboratory
+		 Massachusetts Institute of Technology 
+
+------------------------------------------------------------------------
