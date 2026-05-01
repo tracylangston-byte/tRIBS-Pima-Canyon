@@ -7,3 +7,15 @@ venv/
 /workspaces/SMF_pytRIBS/smf_demo/data/*
 /workspaces/SMF_pytRIBS/smf_demo/results/*
 /workspaces/SMF_pytRIBS/smf_demo/*.in
+
+# Local backup folders
+workspaces/MESSY_SMF_Calibration_pytRIBS/
+workspaces/SMF_Original_pytRIBS/
+
+# Calibration runtime outputs/logs
+workspaces/SMF_Calibration_pytRIBS/calibration_work/06_logs/
+workspaces/SMF_Calibration_pytRIBS/calibration_work/02_results/
+workspaces/SMF_Calibration_pytRIBS/smf_demo/data/model/soil/soil.sdt
+
+# Calibration run-specific input files
+workspaces/SMF_Calibration_pytRIBS/calibration_work/01_run_inputs/
