@@ -19,3 +19,7 @@ workspaces/SMF_Calibration_pytRIBS/smf_demo/data/model/soil/soil.sdt
 
 # Calibration run-specific input files
 workspaces/SMF_Calibration_pytRIBS/calibration_work/01_run_inputs/
+
+# tRIBS calibration run outputs/config
+workspaces/SMF_Calibration_pytRIBS/calibration_work/current_run_config.json
+workspaces/SMF_Calibration_pytRIBS/calibration_work/03_comparisons/
