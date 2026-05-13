@@ -80,12 +80,11 @@ cd /workspaces/tRIBS-Pima-Canyon/workspaces/SMF_Calibration_pytRIBS
 
 ## Major folder structure
 
-The active project folder contains several important folders. The most important one for calibration work is `calibration_work`.
+The active project folder contains several important folders. The main working SMF model notebooks currently live in `smf_demo/`. The most important folder for calibration records, saved inputs, outputs, comparisons, and logs is `calibration_work`.
 
 ```text
 SMF_Calibration_pytRIBS/
 ├── calibration_work/
-│   ├── _archive/
 │   ├── 01_run_inputs/
 │   ├── 02_results/
 │   ├── 03_comparisons/
@@ -97,7 +96,6 @@ SMF_Calibration_pytRIBS/
 │   │   ├── compare_notebooks/
 │   │   │   └── Compare_Calibration_Runs_improved.ipynb
 │   │   └── run_model_versions/
-│   ├── 05_calibration_log/
 │   ├── 06_logs/
 │   └── current_run_config.json
 ├── smf_assets/
@@ -107,18 +105,19 @@ SMF_Calibration_pytRIBS/
 
 ### Folder meanings
 
-| Folder or file                                      | Purpose                                                                                                          |
-| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `calibration_work/01_run_inputs/`                   | Stores copies of `.in`, `.sdt`, and other model input files associated with specific runs.                       |
-| `calibration_work/02_results/`                      | Stores tRIBS model output files for each run.                                                                    |
-| `calibration_work/03_comparisons/csv_exports/`      | Stores exported observed/simulated hydrograph comparison CSVs.                                                   |
-| `calibration_work/03_comparisons/hydrograph_plots/` | Stores comparison plots.                                                                                         |
-| `calibration_work/03_comparisons/summary_tables/`   | Stores run metrics summaries, baseline-vs-current summaries, and the master calibration log.                     |
-| `calibration_work/04_notebooks/`                    | Stores notebook versions used for building, running, and comparing calibration runs.                             |
-| `calibration_work/06_logs/`                         | Stores terminal/model run logs.                                                                                  |
-| `calibration_work/current_run_config.json`          | Stores the current run ID and calibration parameter values written by the Make notebook and read by Run/Compare. |
-| `smf_init_data/`                                    | Stores initial model data such as meteorology, rasters, and observed discharge data.                             |
-| `smf_demo/`                                         | Original or demo model material. Treat this as a reference/demo area unless intentionally modifying it.          |
+| Folder or file                                      | Purpose                                                                                                                               |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `calibration_work/01_run_inputs/`                   | Stores copies of `.in`, `.sdt`, and other model input files associated with specific runs.                                            |
+| `calibration_work/02_results/`                      | Stores tRIBS model output files for each run.                                                                                         |
+| `calibration_work/03_comparisons/csv_exports/`      | Stores exported observed/simulated hydrograph comparison CSVs.                                                                        |
+| `calibration_work/03_comparisons/hydrograph_plots/` | Stores comparison plots.                                                                                                              |
+| `calibration_work/03_comparisons/summary_tables/`   | Stores run metrics summaries, baseline-vs-current summaries, and the master calibration log.                                          |
+| `calibration_work/04_notebooks/`                    | Stores calibration-specific comparison notebooks and saved notebook versions for building/running model variants.                     |
+| `calibration_work/06_logs/`                         | Stores terminal/model run logs.                                                                                                       |
+| `calibration_work/current_run_config.json`          | Stores the current run ID and calibration parameter values written by the Make notebook and read by Run/Compare.                      |
+| `smf_assets/`                                       | Stores supporting figures/images used in documentation or workflow explanation.                                                       |
+| `smf_init_data/`                                    | Stores initial/source model data such as meteorology, mesh files, shapefiles, rasters, and observed discharge data.                   |
+| `smf_demo/`                                         | Active SMF model workspace containing the current Make, Run, and Generate Met Forcing notebooks, plus working model data and results. |
 
 ---
 
