@@ -46,7 +46,7 @@ SWEEP_VALUES = {
         0.1, 0.25, 0.5, 1.0, 2.0, 3.0, 4.0, 6.0, 8.0,
         10.0, 15.0, 20.0, 30.0, 50.0, 100.0
     ],
-    # ABSOLUTE f for RS soil only — Ks fixed at 7x (best calibrated)
+    # PREVIOUS RUN - ABSOLUTE f for RS soil only — Ks fixed at 7x (best calibrated)
     "f_RS_abs": [
         0.001, 0.002, 0.005, 0.010, 0.020,
         0.025, 0.030, 0.035, 0.040, 0.050,
@@ -63,13 +63,15 @@ SWEEP_VALUES = {
     ],
     # Absolute values for hillslope velocity coefficient (baseline = 3)
     "kinemvelcoef": [
-        0.05, 0.1, 0.3, 0.6, 1.0, 2.0, 3.0, 5.0, 8.0,
-        12.0, 20.0, 40.0, 60.0, 100.0, 200.0
+        1.0, 2.0, 3.0, 5.0, 8.0, 12.0,
+        17.0, 23.0, 30.0, 38.0, 47.0,
+        57.0, 68.0, 80.0, 93.0, 100.0,
     ],
     # Absolute values for hillslope velocity exponent (baseline = 0.3)
     "flowexp": [
-        0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6,
-        0.7, 0.8, 0.9, 1.0, 1.2, 1.5, 2.0, 3.0
+        0.05, 0.1, 0.15, 0.2, 0.25, 
+        0.3, 0.35, 0.4, 0.5, 0.6,
+        0.8, 1.0, 1.2, 1.5, 2.0, 3.0
     ],
     # Absolute values for Manning's channel roughness (baseline = 0.04)
     "channelroughness": [
@@ -154,7 +156,8 @@ def main():
         print(f"\n--- {param_name} ({len(values)} values) ---")
         print(f"    Baseline = {builder.BASELINE[param_name]}")
         if param_name == "f_RS_abs":
-            print(f"    Mode: ABSOLUTE f for RS soil only | Ks_mult = 7x (best calibrated)")
+            print(f"    Mode: ABSOLUTE f for RS soil only | Ks_mult = {builder.BASELINE['Ks_mult']}x (best calibrated)")
+        
         elif param_name == "f_RS_abs_Ks1":
             print(f"    Mode: ABSOLUTE f for RS soil only | Ks_mult = 1x (uncalibrated baseline)")
         print(f"    Values:   {values}\n")

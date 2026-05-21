@@ -1,9 +1,8 @@
 """
 run_lhs_sweep.py
 ================
-Runs a Latin Hypercube Sampling sweep jointly across Ks_mult and f_RS_abs.
-Explores the two-parameter interaction space identified as most important
-from the single-parameter sensitivity sweeps.
+Runs a Latin Hypercube Sampling sweep jointly across Ks_mult and kinemvelcoef,
+with f_RS_abs held fixed at the baseline value (0.020 mm⁻¹) from build_sensitivity_run.py.
 
 Results are saved to a SEPARATE CSV from sensitivity_results_all.csv so
 the LHS runs don't get mixed up with the single-parameter sweeps.
@@ -15,19 +14,13 @@ Usage (run from the smf_demo directory):
     python run_lhs_sweep.py --seed 42          # set random seed for reproducibility
 
 Output:
-    calibration_work/03_comparisons/summary_tables/lhs_results_Ks_f.csv
+    calibration_work/03_comparisons/summary_tables/lhs_results_Ks_cv.csv
 
-Parameter ranges (edit below before running):
-    Ks_mult:   3.0 – 10.0   (viable calibration zone from Ks sweep)
-    f_RS_abs:  0.010 – 0.050 (physically meaningful range from f sweep,
-                               smooth response, PBIAS zero-crossing zone)
+Parameter ranges (two swept, one fixed):
+    Ks_mult:      3.0 – 6.0   (viable calibration zone from Ks sweep)
+    kinemvelcoef: 2.0 – 8.0   (viable calibration zone from cv sweep)
+    f_RS_abs:     0.020       (fixed at baseline — not swept in this LHS)
 
-Why these ranges:
-    Ks sweep showed viable zone at 3–10×; best KGE at 4–6×.
-    f sweep showed smooth, physically meaningful response at 0.01–0.05;
-    baseline f=0.02 is where PBIAS crosses zero at Ks=7×.
-    Both ranges are intentionally conservative — staying within the
-    physically plausible space where the model behaves well.
 """
 
 import argparse
@@ -46,8 +39,8 @@ import run_sensitivity_single as runner
 # Edit these before running if you want a different search space.
 # ------------------------------------------------------------------
 LHS_PARAMS = {
-    "Ks_mult":   {"lo": 2.0,   "hi": 5.0},
-    "f_RS_abs":  {"lo": 0.03, "hi": 0.015},
+    "Ks_mult":   {"lo": 3.0,   "hi": 6.0},
+    "kinemvelcoef":  {"lo": 2.0, "hi": 8.0},
 }
 
 # Series number for LHS runs — kept separate from single-param series 60-65
@@ -74,11 +67,11 @@ def generate_lhs_samples(n, params, seed=None):
     return pd.DataFrame(samples)
 
 
-def build_lhs_run_id(ks_mult, f_rs_abs):
+def build_lhs_run_id(ks_mult, kinemvelcoef):
     """Build a run ID for a two-parameter LHS run."""
     ks_label = builder.value_to_label(ks_mult)
-    f_label  = builder.value_to_label(f_rs_abs)
-    change_tested = f"Ks{ks_label}x_fRS{f_label}"
+    cv_label  = builder.value_to_label(kinemvelcoef)
+    change_tested = f"Ks{ks_label}x_cv{cv_label}"
     run_id = f"{builder.LOCATION}_{builder.EVENT_DATE}_{LHS_SERIES}_{change_tested}"
     return run_id, change_tested
 
@@ -100,19 +93,19 @@ def load_existing_lhs(out_path):
     return pd.DataFrame()
 
 
-def build_and_run_lhs(ks_mult, f_rs_abs):
+def build_and_run_lhs(ks_mult, kinemvelcoef):
     """
     Build and run one LHS point. Temporarily overrides PARAM_CONFIG and
     BASELINE in the builder so the run gets the right ID and parameters.
     Writes a custom current_run_config.json and calls run_and_score().
     """
-    run_id, change_tested = build_lhs_run_id(ks_mult, f_rs_abs)
+    run_id, change_tested = build_lhs_run_id(ks_mult, kinemvelcoef)
 
     notebook_dir = Path.cwd()
     project_root = notebook_dir.parent if notebook_dir.name == "smf_demo" else notebook_dir
     calib_dir    = project_root / "calibration_work"
 
-    run_category       = "70_lhs"
+    run_category       = "71_lhs"
     run_input_dir      = calib_dir / "01_run_inputs"  / run_category
     run_results_dir    = calib_dir / "02_results"     / run_category / run_id
     csv_export_dir     = calib_dir / "03_comparisons" / "csv_exports"
@@ -124,19 +117,10 @@ def build_and_run_lhs(ks_mult, f_rs_abs):
                    plot_export_dir, summary_export_dir, log_dir]:
         folder.mkdir(parents=True, exist_ok=True)
 
-    # Temporarily patch PARAM_CONFIG so build_input_file uses LHS series/prefix
-    original_config = builder.PARAM_CONFIG.copy()
-    builder.PARAM_CONFIG["f_RS_abs"] = {
-        "series": LHS_SERIES,
-        "prefix": "Ks",
-        "suffix": "",
-        "type":   "absolute",
-    }
-
     # Temporarily patch BASELINE so both Ks and f are set correctly
     original_baseline = builder.BASELINE.copy()
     builder.BASELINE["Ks_mult"]  = ks_mult
-    builder.BASELINE["f_RS_abs"] = f_rs_abs
+    builder.BASELINE["kinemvelcoef"] = kinemvelcoef
 
     try:
         # Use build_input_file but intercept to set the right run_id/paths
@@ -181,8 +165,7 @@ def build_and_run_lhs(ks_mult, f_rs_abs):
                 cls['m']      = sp['m']
                 cls['PsiB']   = sp['PsiB']
                 cls['n']      = sp['n']
-                # RS soil gets the swept f; all others use lookup baseline
-                cls['f'] = f_rs_abs if cid == '1' else sp['f']
+                cls['f']      = sp['f']
 
         working_soil_table    = Path("data/model/soil/soil.sdt")
         soil.write_soil_table(soil_table, str(working_soil_table), textures=True)
@@ -218,7 +201,7 @@ def build_and_run_lhs(ks_mult, f_rs_abs):
         model.optpercolation['value']      = b["optpercolation"]
         model.channelconductivity['value'] = b["channelconductivity_mmhr"] / 3.6e6
         model.channelporosity['value']     = b["channelporosity"]
-        model.kinemvelcoef['value']        = b["kinemvelcoef"]
+        model.kinemvelcoef['value']        = kinemvelcoef  # explicitly use swept value
         model.flowexp['value']             = b["flowexp"]
         model.channelroughness['value']    = b["channelroughness"]
         model.channelwidthcoeff['value']   = b["channelwidthcoeff"]
@@ -244,9 +227,8 @@ def build_and_run_lhs(ks_mult, f_rs_abs):
         model.write_input_file(input_file)
 
         # Print compact audit
-        print(f"  Ks={ks_mult:5.2f}×  f={f_rs_abs:.4f} mm⁻¹  "
-              f"(RS: Ks={builder.SOIL_PARAM_LOOKUP['1']['Ks']*ks_mult:.1f} mm/hr, "
-              f"1/f={1/f_rs_abs:.0f} mm)")
+        print(f"  Ks={ks_mult:5.2f}×  cv={kinemvelcoef:.2f}  "
+            f"(RS Ks={builder.SOIL_PARAM_LOOKUP['1']['Ks']*ks_mult:.1f} mm/hr)")
 
         # Write config JSON for run_sensitivity_single.py
         run_config = {
@@ -262,13 +244,13 @@ def build_and_run_lhs(ks_mult, f_rs_abs):
             "event_start":               builder.EVENT_START,
             "event_end":                 builder.EVENT_END,
             "Ks_mult":                   ks_mult,
-            "f_RS_abs":                  f_rs_abs,
+            "f_RS_abs":                  b["f_RS_abs"],   # fixed key name, kept for run_sensitivity_single compatibility
             "As_value":                  b["As_value"],
             "Au_value":                  b["Au_value"],
             "optpercolation":            b["optpercolation"],
             "channelconductivity_mmhr":  b["channelconductivity_mmhr"],
             "channelporosity":           b["channelporosity"],
-            "kinemvelcoef":              b["kinemvelcoef"],
+            "kinemvelcoef":              kinemvelcoef,
             "flowexp":                   b["flowexp"],
             "channelroughness":          b["channelroughness"],
             "channelwidthcoeff":         b["channelwidthcoeff"],
@@ -278,7 +260,7 @@ def build_and_run_lhs(ks_mult, f_rs_abs):
             "csv_export_dir":            os.path.relpath(csv_export_dir,      notebook_dir),
             "plot_export_dir":           os.path.relpath(plot_export_dir,     notebook_dir),
             "summary_export_dir":        os.path.relpath(summary_export_dir,  notebook_dir),
-            "swept_param":               "lhs_Ks_f",
+            "swept_param":               "lhs_Ks_cv",
             "swept_value":               ks_mult,   # primary sweep value for compatibility
         }
 
@@ -287,7 +269,6 @@ def build_and_run_lhs(ks_mult, f_rs_abs):
 
     finally:
         # Always restore original builder state
-        builder.PARAM_CONFIG = original_config
         builder.BASELINE     = original_baseline
 
     # Run tRIBS and score
@@ -295,15 +276,15 @@ def build_and_run_lhs(ks_mult, f_rs_abs):
 
     # Add both LHS parameter values explicitly to the metrics dict
     metrics["Ks_mult"]  = ks_mult
-    metrics["f_RS_abs"] = f_rs_abs
-    metrics["swept_param"] = "lhs_Ks_f"
+    metrics["kinemvelcoef"] = kinemvelcoef
+    metrics["swept_param"] = "lhs_Ks_cv"
 
     return metrics
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="LHS sweep over Ks_mult and f_RS_abs jointly.")
+        description="LHS sweep over Ks_mult and kinemvelcoef jointly.")
     parser.add_argument("--n", type=int, default=75,
                         help="Number of LHS samples (default: 75)")
     parser.add_argument("--seed", type=int, default=42,
@@ -317,17 +298,15 @@ def main():
     calib_dir    = project_root / "calibration_work"
     summary_dir  = calib_dir / "03_comparisons" / "summary_tables"
     summary_dir.mkdir(parents=True, exist_ok=True)
-    out_path = summary_dir / "lhs_results_Ks_f.csv"
+    out_path = summary_dir / "lhs_results_Ks_cv.csv"
 
     # Generate LHS samples
     samples = generate_lhs_samples(args.n, LHS_PARAMS, seed=args.seed)
 
     print(f"\n{'='*60}")
-    print(f"LHS sweep: Ks_mult × f_RS_abs  ({args.n} samples, seed={args.seed})")
-    print(f"  Ks_mult  range: {LHS_PARAMS['Ks_mult']['lo']:.1f} – "
-          f"{LHS_PARAMS['Ks_mult']['hi']:.1f}×")
-    print(f"  f_RS_abs range: {LHS_PARAMS['f_RS_abs']['lo']:.3f} – "
-          f"{LHS_PARAMS['f_RS_abs']['hi']:.3f} mm⁻¹")
+    print(f"LHS sweep: Ks_mult × kinemvelcoef  ({args.n} samples, seed={args.seed})")
+    print(f"  Ks_mult      range: {LHS_PARAMS['Ks_mult']['lo']:.1f} – {LHS_PARAMS['Ks_mult']['hi']:.1f}×")
+    print(f"  kinemvelcoef range: {LHS_PARAMS['kinemvelcoef']['lo']:.1f} – {LHS_PARAMS['kinemvelcoef']['hi']:.1f}")
     print(f"  Output: {out_path.name}")
     print(f"{'='*60}\n")
 
@@ -346,11 +325,11 @@ def main():
 
     for i, row in samples.iterrows():
         ks_mult  = row["Ks_mult"]
-        f_rs_abs = row["f_RS_abs"]
+        kinemvelcoef = row["kinemvelcoef"]
 
-        run_id, _ = build_lhs_run_id(ks_mult, f_rs_abs)
+        run_id, _ = build_lhs_run_id(ks_mult, kinemvelcoef)
 
-        print(f"\n[{i+1}/{args.n}] Ks={ks_mult:.3f}×  f={f_rs_abs:.4f} mm⁻¹  →  {run_id}")
+        print(f"\n[{i+1}/{args.n}] Ks={ks_mult:.3f}×  cv={kinemvelcoef:.2f}  →  {run_id}")
 
         if args.skip_existing and csv_already_exists(run_id, calib_dir):
             print(f"  SKIP (exists): {run_id}")
@@ -361,13 +340,13 @@ def main():
                 df = pd.read_csv(metrics_file)
                 m = df.iloc[0].to_dict()
                 m["Ks_mult"]  = ks_mult
-                m["f_RS_abs"] = f_rs_abs
+                m["kinemvelcoef"] = kinemvelcoef
                 all_results.append(m)
             continue
 
         t0 = time.time()
         try:
-            metrics = build_and_run_lhs(ks_mult, f_rs_abs)
+            metrics = build_and_run_lhs(ks_mult, kinemvelcoef)
             # Remove any old result for this run_id before appending
             all_results = [r for r in all_results if r.get("run_id") != run_id]
             all_results.append(metrics)
@@ -405,7 +384,7 @@ def main():
 
         # Print top 10 by KGE
         print(f"\n  Top 10 runs by KGE:")
-        cols = ["run_id", "Ks_mult", "f_RS_abs", "kge", "nse",
+        cols = ["run_id", "Ks_mult", "kinemvelcoef", "kge", "nse",
                 "pbias_pct", "peak_timing_error_hr", "sim_peak_m3s"]
         available = [c for c in cols if c in final_df.columns]
         print(final_df[available].head(10).to_string(index=False, float_format="%.3f"))

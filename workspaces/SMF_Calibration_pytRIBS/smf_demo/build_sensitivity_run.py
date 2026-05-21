@@ -30,7 +30,7 @@ Notes on f_RS_abs and f_RS_abs_Ks1:
     Both sweep ABSOLUTE f for the RS soil class (soil ID '1') only.
     All other soil classes (CO, CeD, EbD, Cb) are held at their baseline f.
     The difference is Ks_mult:
-        f_RS_abs      uses Ks_mult = 7.0 (best calibrated Ks)
+        f_RS_abs      uses Ks_mult = 6.1 (best calibrated Ks)
         f_RS_abs_Ks1  uses Ks_mult = 1.0 (uncalibrated baseline Ks)
     This lets you compare how the f response curve changes with Ks.
 
@@ -57,16 +57,17 @@ from pathlib import Path
 # Update previously calibrated parameters here before each new sweep.
 # -----------------------------------------------------------------------
 BASELINE = {
-    "Ks_mult":           7.0,    # best calibrated value from Ks sweep
-    "f_RS_abs":          0.020,  # absolute f for RS soil (1/mm)
-    "f_RS_abs_Ks1":      0.020,  # same f baseline, but Ks will be forced to 1.0
+    "Ks_mult":           6.1,    # best calibrated value from Ks/f sweep
+    "f_RS_abs":          0.020,  # absolute f for RS soil (1/mm), best calibrated value from Ks/f sweep
+    "f_RS_abs_Ks1":      0.020,  # NA in this run
     "As_value":          1.0,
     "Au_value":          1.0,
     "optpercolation":    0,
     "channelconductivity_mmhr": 70,
     "channelporosity":   0.4,
-    "kinemvelcoef":      3,
-    "flowexp":           0.3,
+    "kinemvelcoef":      3,      # I am not starting from the pure best-KGE Ks × cv pair (Ks ≈ 4.49, cv ≈ 2.74), 
+                                 # because that region still has too much positive volume bias. 
+    "flowexp":           0.3,    # <- this gets overriden per run, so value here does not matter
     "channelroughness":  0.04,
     "channelwidthcoeff": 2.33,
 }
@@ -109,19 +110,13 @@ LAND_PARAM_LOOKUP = {
     '3': {'P': 0.99, 'S': 0.01, 'K': 0.001, 'b2': 0.001, 'Al': 0.15, 'h': 0.01, 'Kt': 0.99, 'Rs': 9999, 'V': 0.01, 'LAI': 0.01,'theta*_s': 0.37, 'theta*_t': 0.30},
 }
 
-
 def value_to_label(value):
-    """Convert a float value to a filename-safe label string.
-    Replaces decimal point with 'p'. Strips trailing zeros after 'p'.
-    Examples: 6.0 -> '6p0', 0.025 -> '0p025', 0.010 -> '0p010'
-    """
     s = f"{value:.6f}".rstrip('0')
-    if '.' in s:
-        s = s.rstrip('.')
-        if '.' in s:
-            s = s.replace('.', 'p')
+    if s.endswith('.'):
+        s = s[:-1] + 'p0'   # preserve the trailing zero for integers like 1.0
+    elif '.' in s:
+        s = s.replace('.', 'p')
     return s
-
 
 def build_run_id(param_name, value):
     cfg = PARAM_CONFIG[param_name]
