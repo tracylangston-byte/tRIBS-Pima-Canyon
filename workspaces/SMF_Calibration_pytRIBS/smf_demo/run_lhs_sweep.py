@@ -46,12 +46,12 @@ import run_sensitivity_single as runner
 # Edit these before running if you want a different search space.
 # ------------------------------------------------------------------
 LHS_PARAMS = {
-    "Ks_mult":   {"lo": 3.0,   "hi": 10.0},
-    "f_RS_abs":  {"lo": 0.010, "hi": 0.050},
+    "Ks_mult":   {"lo": 2.0,   "hi": 5.0},
+    "f_RS_abs":  {"lo": 0.03, "hi": 0.015},
 }
 
 # Series number for LHS runs — kept separate from single-param series 60-65
-LHS_SERIES = "70"
+LHS_SERIES = "71"
 
 
 def generate_lhs_samples(n, params, seed=None):
