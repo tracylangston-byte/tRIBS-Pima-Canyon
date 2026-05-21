@@ -5,33 +5,34 @@ Builds one tRIBS input file for a single-parameter sensitivity run.
 Mirrors the logic of Make_SMF_Model.ipynb exactly.
 
 Usage (run from the smf_demo directory):
-    python build_sensitivity_run.py --param Ks_mult         --value 6.0
-    python build_sensitivity_run.py --param f_RS_abs        --value 0.010
-    python build_sensitivity_run.py --param kinemvelcoef    --value 5.0
-    python build_sensitivity_run.py --param flowexp         --value 0.5
-    python build_sensitivity_run.py --param channelroughness --value 0.08
+    python build_sensitivity_run.py --param Ks_mult            --value 6.0
+    python build_sensitivity_run.py --param f_RS_abs           --value 0.010
+    python build_sensitivity_run.py --param f_RS_abs_Ks1       --value 0.025
+    python build_sensitivity_run.py --param kinemvelcoef       --value 5.0
+    python build_sensitivity_run.py --param flowexp            --value 0.5
+    python build_sensitivity_run.py --param channelroughness   --value 0.08
 
-Notes on Usage: 
-    These are for running a single build manually from the terminal — useful
-    if you want to test one value, inspect the soil audit output, or rebuild
-    a specific run without executing the full sweep. In normal use, you won't
-    call this script directly; run_sensitivity_sweep.py calls it automatically
-    for every value in the sweep list.
+These are for running a single build manually from the terminal — useful
+if you want to test one value, inspect the soil audit output, or rebuild
+a specific run without executing the full sweep. In normal use, you won't
+call this script directly; run_sensitivity_sweep.py calls it automatically
+for every value in the sweep list.
 
 Naming convention (no decimal points):
     Ks_mult          -> series 60 -> SMF_20140812_60_Ks6p0x
-    f_RS_abs         -> series 61 -> SMF_20140812_61_fRS0p010
+    f_RS_abs         -> series 61 -> SMF_20140812_61_fRS0p010       (Ks_mult = 7x)
+    f_RS_abs_Ks1     -> series 65 -> SMF_20140812_65_fRS0p025_Ks1  (Ks_mult = 1x)
     kinemvelcoef     -> series 62 -> SMF_20140812_62_cv5p0
     flowexp          -> series 63 -> SMF_20140812_63_r0p50
     channelroughness -> series 64 -> SMF_20140812_64_n0p080
 
-Notes on f_RS_abs:
-    The swept value is the ABSOLUTE f for the RS soil class (soil ID '1'),
-    which dominates the hillslopes and controls infiltration-excess response.
-    All other soil classes (CO, CeD, EbD, Cb) are held at their baseline f
-    values regardless of what f_RS_abs is set to. This avoids the physical
-    confusion of applying a uniform multiplier across soil classes that span
-    two orders of magnitude in f (0.001 to 0.020).
+Notes on f_RS_abs and f_RS_abs_Ks1:
+    Both sweep ABSOLUTE f for the RS soil class (soil ID '1') only.
+    All other soil classes (CO, CeD, EbD, Cb) are held at their baseline f.
+    The difference is Ks_mult:
+        f_RS_abs      uses Ks_mult = 7.0 (best calibrated Ks)
+        f_RS_abs_Ks1  uses Ks_mult = 1.0 (uncalibrated baseline Ks)
+    This lets you compare how the f response curve changes with Ks.
 
     Baseline f values by class:
         RS  (ID 1): 0.020  (1/f =  50 mm — caliche-controlled)
@@ -51,12 +52,14 @@ import pandas as pd
 from pathlib import Path
 
 # -----------------------------------------------------------------------
-# BASELINE VALUES (all parameters at their true baseline)
-# These are held fixed for every single-parameter sweep run.
+# BASELINE VALUES
+# All parameters are held at these values unless being swept.
+# Update previously calibrated parameters here before each new sweep.
 # -----------------------------------------------------------------------
 BASELINE = {
-    "Ks_mult":           7.0,       # best value from Ks sweep
-    "f_RS_abs":          0.020,     # absolute f for RS soil (1/mm); replaces f_mult
+    "Ks_mult":           7.0,    # best calibrated value from Ks sweep
+    "f_RS_abs":          0.020,  # absolute f for RS soil (1/mm)
+    "f_RS_abs_Ks1":      0.020,  # same f baseline, but Ks will be forced to 1.0
     "As_value":          1.0,
     "Au_value":          1.0,
     "optpercolation":    0,
@@ -70,11 +73,12 @@ BASELINE = {
 
 # Series number and label prefix per parameter
 PARAM_CONFIG = {
-    "Ks_mult":           {"series": "60", "prefix": "Ks",   "suffix": "x",  "type": "multiplier"},
-    "f_RS_abs":          {"series": "61", "prefix": "fRS",  "suffix": "",   "type": "absolute"},
-    "kinemvelcoef":      {"series": "62", "prefix": "cv",   "suffix": "",   "type": "absolute"},
-    "flowexp":           {"series": "63", "prefix": "r",    "suffix": "",   "type": "absolute"},
-    "channelroughness":  {"series": "64", "prefix": "n",    "suffix": "",   "type": "absolute"},
+    "Ks_mult":           {"series": "60", "prefix": "Ks",          "suffix": "x",    "type": "multiplier"},
+    "f_RS_abs":          {"series": "61", "prefix": "fRS",         "suffix": "",     "type": "absolute"},
+    "kinemvelcoef":      {"series": "62", "prefix": "cv",          "suffix": "",     "type": "absolute"},
+    "flowexp":           {"series": "63", "prefix": "r",           "suffix": "",     "type": "absolute"},
+    "channelroughness":  {"series": "64", "prefix": "n",           "suffix": "",     "type": "absolute"},
+    "f_RS_abs_Ks1":      {"series": "65", "prefix": "fRS",         "suffix": "_Ks1", "type": "absolute"},
 }
 
 # Fixed simulation settings
@@ -88,8 +92,8 @@ EVENT_END      = "2014-08-13 12:00"
 EPSG           = 26912
 
 # Soil parameter baselines per class.
-# For f_RS_abs runs: RS f is overridden by the swept value;
-# all other classes always use the f listed here.
+# RS f is overridden by the swept value for f_RS_abs and f_RS_abs_Ks1 runs.
+# All other classes always use the f listed here.
 SOIL_PARAM_LOOKUP = {
     '1': {'Ks': 3.6,  'thetaS': 0.40, 'thetaR': 0.06, 'm': 0.38, 'PsiB': -390, 'f': 0.020, 'n': 0.40},
     '2': {'Ks': 2.8,  'thetaS': 0.40, 'thetaR': 0.05, 'm': 0.25, 'PsiB': -401, 'f': 0.002, 'n': 0.40},
@@ -111,7 +115,6 @@ def value_to_label(value):
     Replaces decimal point with 'p'. Strips trailing zeros after 'p'.
     Examples: 6.0 -> '6p0', 0.025 -> '0p025', 0.010 -> '0p010'
     """
-    # Use enough decimal places to distinguish small f values cleanly
     s = f"{value:.6f}".rstrip('0')
     if '.' in s:
         s = s.rstrip('.')
@@ -171,8 +174,17 @@ def build_input_file(param_name, value):
     params = {**BASELINE}       # start from baseline
     params[param_name] = value  # override just the swept param
 
+    # f_RS_abs_Ks1 sweeps f but forces Ks_mult to 1.0 regardless of BASELINE
+    if param_name == "f_RS_abs_Ks1":
+        params["Ks_mult"] = 1.0
+
     Ks_mult                  = params["Ks_mult"]
-    f_RS_abs                 = params["f_RS_abs"]
+    # Resolve f_RS_abs: both f_RS_abs and f_RS_abs_Ks1 sweep RS soil f
+    if param_name == "f_RS_abs_Ks1":
+        f_RS_abs = value
+    else:
+        f_RS_abs = params["f_RS_abs"]
+
     As_value                 = params["As_value"]
     Au_value                 = params["Au_value"]
     optpercolation           = params["optpercolation"]
@@ -212,6 +224,9 @@ def build_input_file(param_name, value):
 
     soil_table = soil.read_soil_table(textures=True)
 
+    # f sweep params: both f_RS_abs and f_RS_abs_Ks1 override RS soil f only
+    f_params = {"f_RS_abs", "f_RS_abs_Ks1"}
+
     for cls in soil_table:
         cls['As'] = As_value
         cls['Au'] = Au_value
@@ -226,10 +241,9 @@ def build_input_file(param_name, value):
             cls['m']      = sp['m']
             cls['PsiB']   = sp['PsiB']
             cls['n']      = sp['n']
-            # f assignment:
-            # RS soil (ID '1') uses the swept absolute value.
+            # RS soil (ID '1') uses swept f for both f sweep parameter types.
             # All other classes always use their baseline f from the lookup.
-            if cid == '1':
+            if cid == '1' and param_name in f_params:
                 cls['f'] = f_RS_abs
             else:
                 cls['f'] = sp['f']
@@ -312,13 +326,12 @@ def build_input_file(param_name, value):
     # Write input file
     model.write_input_file(input_file)
 
-    # Print soil audit so you can verify what was actually assigned
+    # Print soil audit
     print(f"\n  Soil table for {run_id}:")
     print(f"  {'ID':<4} {'Texture':<6} {'Ks (mm/hr)':<14} {'f (1/mm)':<12} {'1/f (mm)':<10} {'% of watershed'}")
     print(f"  {'-'*4} {'-'*6} {'-'*14} {'-'*12} {'-'*10} {'-'*15}")
 
     # Calculate soil class area fractions within the watershed boundary
-    # Uses the same rasterio geometry_mask approach as Make_SMF_Model.ipynb
     soil_pct = {}
     try:
         from rasterio.features import geometry_mask
@@ -329,14 +342,10 @@ def build_input_file(param_name, value):
         profile   = raw_map['profile']
         transform = profile['transform']
 
-        # If raster has a band dimension, use the first band
         if data.ndim == 3:
             data = data[0]
 
-        # Mask to watershed boundary
         watershed_gdf = proj.meta.get('watershed_gdf', None)
-
-        # Try to load watershed shapefile from the preprocessing directory
         if watershed_gdf is None:
             import geopandas as gpd
             ws_candidates = list(Path(proj.directories['preprocessing']).glob("*watershed*.shp"))
@@ -352,7 +361,6 @@ def build_input_file(param_name, value):
                 all_touched=False
             )
         else:
-            # Fallback: use all non-nodata pixels if watershed shapefile not found
             inside = np.ones(data.shape, dtype=bool)
 
         nodata = profile.get('nodata', None)
@@ -362,7 +370,6 @@ def build_input_file(param_name, value):
 
         soil_values = data[valid]
         if len(soil_values) > 0:
-            import pandas as pd
             counts = pd.Series(soil_values).value_counts().sort_index()
             total  = counts.sum()
             for sid, cnt in counts.items():
@@ -377,11 +384,11 @@ def build_input_file(param_name, value):
         f_val  = cls['f']
         depth  = 1.0 / f_val if f_val > 0 else float('inf')
         pct    = soil_pct.get(cid, float('nan'))
-        marker = " <-- swept" if cid == '1' and param_name == "f_RS_abs" else ""
+        marker = " <-- swept" if cid == '1' and param_name in f_params else ""
         pct_str = f"{pct:.1f}%" if not np.isnan(pct) else "n/a"
         print(f"  {cid:<4} {tex:<6} {ks_val:<14.3f} {f_val:<12.4f} {depth:<10.0f} {pct_str}{marker}")
 
-    # Save run config JSON (read by run_sensitivity_single.py)
+    # Save run config JSON
     current_run_config = {
         "location":                  LOCATION,
         "event_date":                EVENT_DATE,
@@ -421,6 +428,7 @@ def build_input_file(param_name, value):
     print(f"\n  Built: {run_id}")
     print(f"    Input file: {input_file}")
     print(f"    {param_name} = {value}  (baseline = {BASELINE[param_name]})")
+    print(f"    Ks_mult = {Ks_mult}")
     return run_id, input_file, log_file
 
 

@@ -1,28 +1,29 @@
 """
 run_sensitivity_sweep.py
 ========================
-Runs the full single-parameter sensitivity sweep for all 5 parameters.
+Runs the full single-parameter sensitivity sweep for all parameters.
 For each value it calls build_sensitivity_run.py then run_sensitivity_single.py,
 then assembles a combined results table.
 
 All parameters accumulate in one CSV — running a new parameter sweep appends
 to (or updates) sensitivity_results_all.csv rather than overwriting it. This
-means you can run Ks_mult, then f_RS_abs, then kinemvelcoef, and all results
+means you can run Ks_mult, then f_RS_abs, then f_RS_abs_Ks1, and all results
 are preserved in one place for cross-parameter comparison and plotting.
 
 Usage (run from the smf_demo directory):
-    python run_sensitivity_sweep.py                      # runs all 5 parameters
-    python run_sensitivity_sweep.py --param Ks_mult      # runs one parameter only
-    python run_sensitivity_sweep.py --param f_RS_abs     # runs f sweep only
-    python run_sensitivity_sweep.py --skip_existing      # skips runs whose CSV already exists
+    python run_sensitivity_sweep.py                         # runs all parameters
+    python run_sensitivity_sweep.py --param Ks_mult         # runs one parameter only
+    python run_sensitivity_sweep.py --param f_RS_abs        # runs f sweep at Ks=7x
+    python run_sensitivity_sweep.py --param f_RS_abs_Ks1    # runs f sweep at Ks=1x
+    python run_sensitivity_sweep.py --skip_existing         # skips runs whose CSV already exists
 
 Output:
     calibration_work/03_comparisons/summary_tables/sensitivity_results_all.csv
 
-Notes on f_RS_abs sweep:
-    Values are ABSOLUTE f for the RS soil class (1/mm), not multipliers.
-    RS soil dominates the SMF hillslopes. All other soil classes are held
-    at their baseline f values for every f_RS_abs run.
+Parameter notes:
+    f_RS_abs      — ABSOLUTE f for RS soil only, Ks fixed at best calibrated value (7x)
+    f_RS_abs_Ks1  — ABSOLUTE f for RS soil only, Ks fixed at uncalibrated baseline (1x)
+                    Use to test whether the f response curve shifts with Ks.
 """
 
 import argparse
@@ -32,7 +33,6 @@ import time
 import pandas as pd
 from pathlib import Path
 
-# Import the two worker scripts (must be in the same directory or on PYTHONPATH)
 import build_sensitivity_run as builder
 import run_sensitivity_single as runner
 
@@ -46,13 +46,20 @@ SWEEP_VALUES = {
         0.1, 0.25, 0.5, 1.0, 2.0, 3.0, 4.0, 6.0, 8.0,
         10.0, 15.0, 20.0, 30.0, 50.0, 100.0
     ],
-    # ABSOLUTE f values for RS soil class only (1/mm).
-    # Other soil classes held at baseline f throughout.
+    # ABSOLUTE f for RS soil only — Ks fixed at 7x (best calibrated)
     "f_RS_abs": [
         0.001, 0.002, 0.005, 0.010, 0.020,
-        0.050, 0.060, 0.070, 0.080, 0.090,   # new values around 0.1
-        0.100, 0.110, 0.120, 0.150,           # new values around 0.1
-        0.050, 0.100, 0.200, 0.500, 1.000
+        0.025, 0.030, 0.035, 0.040, 0.050,
+        0.060, 0.070, 0.080, 0.090, 0.100,
+        0.110, 0.120, 0.150, 0.200, 0.500, 1.000
+    ],
+    # ABSOLUTE f for RS soil only — Ks fixed at 1x (uncalibrated baseline)
+    # Focused range around the transition zone observed in f_RS_abs sweep
+    "f_RS_abs_Ks1": [
+        0.005, 0.010, 0.015, 0.020,
+        0.025, 0.030, 0.035, 0.040,
+        0.050, 0.060, 0.070, 0.080,
+        0.090, 0.100, 0.110,
     ],
     # Absolute values for hillslope velocity coefficient (baseline = 3)
     "kinemvelcoef": [
@@ -94,14 +101,12 @@ def load_existing_results(out_path):
 def merge_results(existing_df, new_results, params_being_swept):
     """
     Merge new results into the existing DataFrame.
-    Drops any existing rows for the parameters being swept in this run
-    (so re-running a sweep updates rather than duplicates), then appends
-    the new results and sorts.
+    Drops existing rows only for the parameters being swept in this run,
+    then appends new results and sorts. Other parameters are untouched.
     """
     if existing_df.empty:
         merged = pd.DataFrame(new_results)
     else:
-        # Drop existing rows for the parameters we just swept
         mask = existing_df["swept_param"].isin(params_being_swept)
         kept = existing_df[~mask].copy()
         n_dropped = mask.sum()
@@ -131,7 +136,6 @@ def main():
 
     params_to_run = [args.param] if args.param else list(SWEEP_VALUES.keys())
 
-    # Load whatever results already exist in the CSV
     existing_df = load_existing_results(out_path)
 
     new_results = []
@@ -150,17 +154,17 @@ def main():
         print(f"\n--- {param_name} ({len(values)} values) ---")
         print(f"    Baseline = {builder.BASELINE[param_name]}")
         if param_name == "f_RS_abs":
-            print(f"    Mode: ABSOLUTE values for RS soil only (other classes fixed at baseline f)")
+            print(f"    Mode: ABSOLUTE f for RS soil only | Ks_mult = 7x (best calibrated)")
+        elif param_name == "f_RS_abs_Ks1":
+            print(f"    Mode: ABSOLUTE f for RS soil only | Ks_mult = 1x (uncalibrated baseline)")
         print(f"    Values:   {values}\n")
 
         for value in values:
             run_id, _ = builder.build_run_id(param_name, value)
 
-            # Skip if already done
             if args.skip_existing and csv_already_exists(param_name, value, calib_dir):
                 print(f"  SKIP (exists): {run_id}")
                 skipped += 1
-                # Still load the existing metrics summary so it goes into the combined CSV
                 metrics_file = summary_dir / f"{run_id}_metrics_summary.csv"
                 if metrics_file.exists():
                     df = pd.read_csv(metrics_file)
@@ -171,10 +175,7 @@ def main():
             t0 = time.time()
 
             try:
-                # Step 1: build input file
                 builder.build_input_file(param_name, value)
-
-                # Step 2: run tRIBS and score
                 metrics = runner.run_and_score()
                 new_results.append(metrics)
                 completed += 1
@@ -193,7 +194,7 @@ def main():
                 print(f"  Run time: {elapsed/60:.1f} min  |  ETA: {eta_min:.0f} min remaining")
 
     # ------------------------------------------------------------------
-    # Merge new results with existing and save
+    # Merge and save
     # ------------------------------------------------------------------
     print(f"\n{'='*60}")
     print(f"Sweep complete:  {completed} ran,  {skipped} skipped,  {failed} failed")
@@ -205,13 +206,11 @@ def main():
         print(f"Combined results saved to:\n  {out_path}")
         print(f"  Total rows in file: {len(final_df)}")
 
-        # Show parameters currently in the file
         param_counts = final_df.groupby("swept_param").size()
         print(f"\n  Parameters in combined CSV:")
         for p, n in param_counts.items():
             print(f"    {p}: {n} runs")
 
-        # Quick summary of just the parameters we ran this session
         print(f"\n  Results from this sweep:")
         cols = ["swept_param", "swept_value", "kge", "nse", "rmse_m3s",
                 "pbias_pct", "peak_timing_error_hr", "sim_peak_m3s"]
