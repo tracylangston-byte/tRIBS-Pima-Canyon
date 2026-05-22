@@ -96,7 +96,7 @@ PARAM_META = {
     },
     "channelroughness": {
         "xlabel":       "Manning's channel roughness (n)",
-        "log_x":        False,
+        "log_x":        True,       # Change to true when very small values are being used with values orders of magnitude larger
         "tick_fmt":     lambda v, _: f"{v:g}",
         "colorbar_lbl": "Manning's n",
         "color_low":    "Purple = low n (fast channel flow)",

@@ -67,8 +67,8 @@ BASELINE = {
     "channelporosity":   0.4,
     "kinemvelcoef":      3,      # I am not starting from the pure best-KGE Ks × cv pair (Ks ≈ 4.49, cv ≈ 2.74), 
                                  # because that region still has too much positive volume bias. 
-    "flowexp":           0.3,    # <- this gets overriden per run, so value here does not matter
-    "channelroughness":  0.04,
+    "flowexp":           0.3,    # best calibrated value from flowexp sweep
+    "channelroughness":  0.04,   # <- this gets overridden per run
     "channelwidthcoeff": 2.33,
 }
 
@@ -321,67 +321,68 @@ def build_input_file(param_name, value):
     # Write input file
     model.write_input_file(input_file)
 
-    # Print soil audit
-    print(f"\n  Soil table for {run_id}:")
-    print(f"  {'ID':<4} {'Texture':<6} {'Ks (mm/hr)':<14} {'f (1/mm)':<12} {'1/f (mm)':<10} {'% of watershed'}")
-    print(f"  {'-'*4} {'-'*6} {'-'*14} {'-'*12} {'-'*10} {'-'*15}")
+    # THIS SECTION NOT NEEDED IF f IS NOT BEING SWEPT
+    # # Print soil audit
+    # print(f"\n  Soil table for {run_id}:")
+    # print(f"  {'ID':<4} {'Texture':<6} {'Ks (mm/hr)':<14} {'f (1/mm)':<12} {'1/f (mm)':<10} {'% of watershed'}")
+    # print(f"  {'-'*4} {'-'*6} {'-'*14} {'-'*12} {'-'*10} {'-'*15}")
 
-    # Calculate soil class area fractions within the watershed boundary
-    soil_pct = {}
-    try:
-        from rasterio.features import geometry_mask
-        from shapely.geometry import mapping
+    # # Calculate soil class area fractions within the watershed boundary
+    # soil_pct = {}
+    # try:
+    #     from rasterio.features import geometry_mask
+    #     from shapely.geometry import mapping
 
-        raw_map = InOut.read_ascii(soil_ras)
-        data      = raw_map['data']
-        profile   = raw_map['profile']
-        transform = profile['transform']
+    #     raw_map = InOut.read_ascii(soil_ras)
+    #     data      = raw_map['data']
+    #     profile   = raw_map['profile']
+    #     transform = profile['transform']
 
-        if data.ndim == 3:
-            data = data[0]
+    #     if data.ndim == 3:
+    #         data = data[0]
 
-        watershed_gdf = proj.meta.get('watershed_gdf', None)
-        if watershed_gdf is None:
-            import geopandas as gpd
-            ws_candidates = list(Path(proj.directories['preprocessing']).glob("*watershed*.shp"))
-            if ws_candidates:
-                watershed_gdf = gpd.read_file(ws_candidates[0])
+    #     watershed_gdf = proj.meta.get('watershed_gdf', None)
+    #     if watershed_gdf is None:
+    #         import geopandas as gpd
+    #         ws_candidates = list(Path(proj.directories['preprocessing']).glob("*watershed*.shp"))
+    #         if ws_candidates:
+    #             watershed_gdf = gpd.read_file(ws_candidates[0])
 
-        if watershed_gdf is not None:
-            inside = geometry_mask(
-                [mapping(geom) for geom in watershed_gdf.geometry],
-                out_shape=data.shape,
-                transform=transform,
-                invert=True,
-                all_touched=False
-            )
-        else:
-            inside = np.ones(data.shape, dtype=bool)
+    #     if watershed_gdf is not None:
+    #         inside = geometry_mask(
+    #             [mapping(geom) for geom in watershed_gdf.geometry],
+    #             out_shape=data.shape,
+    #             transform=transform,
+    #             invert=True,
+    #             all_touched=False
+    #         )
+    #     else:
+    #         inside = np.ones(data.shape, dtype=bool)
 
-        nodata = profile.get('nodata', None)
-        valid  = inside & np.isfinite(data) & (data >= 0)
-        if nodata is not None:
-            valid = valid & (data != nodata)
+    #     nodata = profile.get('nodata', None)
+    #     valid  = inside & np.isfinite(data) & (data >= 0)
+    #     if nodata is not None:
+    #         valid = valid & (data != nodata)
 
-        soil_values = data[valid]
-        if len(soil_values) > 0:
-            counts = pd.Series(soil_values).value_counts().sort_index()
-            total  = counts.sum()
-            for sid, cnt in counts.items():
-                soil_pct[str(int(sid))] = 100.0 * cnt / total
-    except Exception as e:
-        print(f"  (soil % calculation skipped: {e})")
+    #     soil_values = data[valid]
+    #     if len(soil_values) > 0:
+    #         counts = pd.Series(soil_values).value_counts().sort_index()
+    #         total  = counts.sum()
+    #         for sid, cnt in counts.items():
+    #             soil_pct[str(int(sid))] = 100.0 * cnt / total
+    # except Exception as e:
+    #     print(f"  (soil % calculation skipped: {e})")
 
-    for cls in soil_table:
-        cid    = str(cls['ID'])
-        tex    = cls.get('Texture', '')
-        ks_val = cls['Ks']
-        f_val  = cls['f']
-        depth  = 1.0 / f_val if f_val > 0 else float('inf')
-        pct    = soil_pct.get(cid, float('nan'))
-        marker = " <-- swept" if cid == '1' and param_name in f_params else ""
-        pct_str = f"{pct:.1f}%" if not np.isnan(pct) else "n/a"
-        print(f"  {cid:<4} {tex:<6} {ks_val:<14.3f} {f_val:<12.4f} {depth:<10.0f} {pct_str}{marker}")
+    # for cls in soil_table:
+    #     cid    = str(cls['ID'])
+    #     tex    = cls.get('Texture', '')
+    #     ks_val = cls['Ks']
+    #     f_val  = cls['f']
+    #     depth  = 1.0 / f_val if f_val > 0 else float('inf')
+    #     pct    = soil_pct.get(cid, float('nan'))
+    #     marker = " <-- swept" if cid == '1' and param_name in f_params else ""
+    #     pct_str = f"{pct:.1f}%" if not np.isnan(pct) else "n/a"
+    #     print(f"  {cid:<4} {tex:<6} {ks_val:<14.3f} {f_val:<12.4f} {depth:<10.0f} {pct_str}{marker}")
 
     # Save run config JSON
     current_run_config = {

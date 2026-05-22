@@ -13,7 +13,7 @@ are preserved in one place for cross-parameter comparison and plotting.
 Usage (run from the smf_demo directory):
     python run_sensitivity_sweep.py                         # runs all parameters
     python run_sensitivity_sweep.py --param Ks_mult         # runs one parameter only
-    python run_sensitivity_sweep.py --param f_RS_abs        # runs f sweep at Ks=7x
+    python run_sensitivity_sweep.py --param flowexp         # runs r sweep at Ks=6.1x     
     python run_sensitivity_sweep.py --param f_RS_abs_Ks1    # runs f sweep at Ks=1x
     python run_sensitivity_sweep.py --skip_existing         # skips runs whose CSV already exists
 
@@ -75,9 +75,11 @@ SWEEP_VALUES = {
     ],
     # Absolute values for Manning's channel roughness (baseline = 0.04)
     "channelroughness": [
-        0.005, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06,
-        0.07, 0.09, 0.12, 0.15, 0.20, 0.30, 0.50, 0.80
-    ],
+        0.001, 0.002, 0.003, 0.005, 
+        0.0075, 0.01, 0.015, 0.02, 
+        0.03, 0.04, 0.05, 0.07, 
+        0.10, 0.15, 0.20
+        ],
 }
 
 
