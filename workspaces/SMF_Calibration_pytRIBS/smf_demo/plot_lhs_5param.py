@@ -34,17 +34,9 @@ from pathlib import Path
 # =======================================================================
 # CONFIG — edit these two lines to switch between series
 # =======================================================================
-RESULTS_CSV  = "lhs_results_5param_KsHi.csv"    # or "lhs_results_5param_KsLo.csv"
-SERIES_LABEL = "Series81_KsLo"                  # or "Series80_KsHi"
+RESULTS_CSV  = "lhs_results_5param_KsHi.csv"   # or "lhs_results_5param_KsLo.csv"
+SERIES_LABEL = "Series81_KsHi"                  # or "Series80_KsLo"
 # =======================================================================
-
-# Title strings derived automatically from SERIES_LABEL — no other edits needed
-if "KsLo" in SERIES_LABEL:
-    SERIES_TITLE = "Series 80  |  Ks 4-8x"
-elif "KsHi" in SERIES_LABEL:
-    SERIES_TITLE = "Series 81  |  Ks 7.5-12x"
-else:
-    SERIES_TITLE = SERIES_LABEL   # fallback: use label as-is
 
 EVENT_LABEL      = "SMF Aug 12, 2014"
 EVENT_CROP_START = "2014-08-12 17:30"
@@ -73,8 +65,6 @@ if not results_path.exists():
 
 df = pd.read_csv(results_path)
 print(f"Loaded {len(df)} LHS runs from {results_path.name}")
-print(f"Series: {SERIES_TITLE}")
-print(f"Plots -> {plot_dir}")
 
 required_cols = ["run_id", "Ks_mult", "kinemvelcoef", "flowexp", "channelroughness",
                  "kge", "nse", "pbias_pct", "kge_r", "kge_alpha", "kge_beta"]
@@ -85,6 +75,19 @@ if missing:
 
 df = df.dropna(subset=required_cols).reset_index(drop=True)
 print(f"  {len(df)} runs after dropping NaN rows")
+
+# SERIES_TITLE built from actual data — Ks range is always accurate
+ks_lo = df["Ks_mult"].min()
+ks_hi = df["Ks_mult"].max()
+if "KsLo" in SERIES_LABEL:
+    SERIES_TITLE = f"Series 80  |  Ks {ks_lo:.1f}-{ks_hi:.1f}x"
+elif "KsHi" in SERIES_LABEL:
+    SERIES_TITLE = f"Series 81  |  Ks {ks_lo:.1f}-{ks_hi:.1f}x"
+else:
+    SERIES_TITLE = f"{SERIES_LABEL}  |  Ks {ks_lo:.1f}-{ks_hi:.1f}x"
+
+print(f"Series: {SERIES_TITLE}")
+print(f"Plots -> {plot_dir}")
 
 # Convenience arrays
 ks_vals    = df["Ks_mult"].values
@@ -530,8 +533,8 @@ for key, label in zip(PARAM_KEYS, PARAM_LABELS):
     r_corr = np.corrcoef(df[key].values, kge_vals)[0, 1]
     print(f"  {label:<35s}  r = {r_corr:+.3f}")
 print(f"\nTop 5 runs by KGE:")
-top5_cols = ["run_id", "Ks_mult", "kinemvelcoef", "flowexp",
-             "channelroughness", "kge", "pbias_pct"]
+top5_cols  = ["run_id", "Ks_mult", "kinemvelcoef", "flowexp",
+              "channelroughness", "kge", "pbias_pct"]
 top5_avail = [c for c in top5_cols if c in df.columns]
 print(df.sort_values("kge", ascending=False).head(5)[top5_avail]
         .to_string(index=False, float_format="%.4f"))
