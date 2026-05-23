@@ -173,9 +173,10 @@ def run_and_score():
         "kge_beta":            beta,
         # all parameter values for completeness
         "Ks_mult":             run_config["Ks_mult"],
-        "f_RS_abs":            run_config.get("f_RS_abs", run_config.get("f_mult", float('nan'))),
+        "f_RS_abs":            run_config.get("f_RS_abs", np.nan),
         "As_value":            run_config.get("As_value", np.nan),
         "Au_value":            run_config.get("Au_value", np.nan),
+        "thetaS_mult":         run_config.get("thetaS_mult", np.nan),
         "optpercolation":      run_config["optpercolation"],
         "channelconductivity_mmhr": run_config["channelconductivity_mmhr"],
         "channelporosity":     run_config["channelporosity"],

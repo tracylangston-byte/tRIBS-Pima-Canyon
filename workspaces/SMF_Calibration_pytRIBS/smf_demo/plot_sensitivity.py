@@ -7,10 +7,15 @@ Works for any parameter in sensitivity_results_all.csv.
 Usage (run from the smf_demo directory):
     python plot_sensitivity.py --param Ks_mult
     python plot_sensitivity.py --param f_RS_abs
-    python plot_sensitivity.py --param f_RS_abs_Ks1
     python plot_sensitivity.py --param kinemvelcoef
     python plot_sensitivity.py --param flowexp
     python plot_sensitivity.py --param channelroughness
+    python plot_sensitivity.py --param channelwidthcoeff
+    python plot_sensitivity.py --param thetaS_mult
+    python plot_sensitivity.py --param psiB_mult
+    python plot_sensitivity.py --param As_value
+    python plot_sensitivity.py --param Au_value
+    python plot_sensitivity.py --param AsAu_value
 
 Produces 5 figures saved to:
     calibration_work/03_comparisons/sensitivity_plots/{param_name}/
@@ -55,19 +60,6 @@ PARAM_META = {
         "sweet_label":  None,
         "best_fmt":     lambda v, kge: f"Best run (f={v:g} mm⁻¹, KGE={kge:.3f})",
     },
-    "f_RS_abs_Ks1": {
-        "xlabel":       "RS soil f (1/mm)  [Ks = 1× baseline]",
-        "log_x":        True,
-        "tick_fmt":     lambda v, _: f"{v:g}",
-        "colorbar_lbl": "f (1/mm)",
-        "color_low":    "Purple = low f (deep conductivity, possible subsurface flow)",
-        "color_high":   "Yellow = high f (shallow collapse, infiltration-excess only)",
-        "baseline":     0.020,
-        "sweet_lo":     None,
-        "sweet_hi":     None,
-        "sweet_label":  None,
-        "best_fmt":     lambda v, kge: f"Best run (f={v:g} mm⁻¹, KGE={kge:.3f})",
-    },
     "kinemvelcoef": {
         "xlabel":       "Hillslope velocity coefficient (cv)",
         "log_x":        True,
@@ -96,7 +88,7 @@ PARAM_META = {
     },
     "channelroughness": {
         "xlabel":       "Manning's channel roughness (n)",
-        "log_x":        True,       # Change to true when very small values are being used with values orders of magnitude larger
+        "log_x":        True,
         "tick_fmt":     lambda v, _: f"{v:g}",
         "colorbar_lbl": "Manning's n",
         "color_low":    "Purple = low n (fast channel flow)",
@@ -106,6 +98,84 @@ PARAM_META = {
         "sweet_hi":     None,
         "sweet_label":  None,
         "best_fmt":     lambda v, kge: f"Best run (n={v:g}, KGE={kge:.3f})",
+    },
+    "channelwidthcoeff": {
+        "xlabel":       "Channel width coefficient (αB)",
+        "log_x":        False,
+        "tick_fmt":     lambda v, _: f"{v:g}",
+        "colorbar_lbl": "αB",
+        "color_low":    "Purple = narrow channels (low αB)",
+        "color_high":   "Yellow = wide channels (high αB)",
+        "baseline":     2.33,
+        "sweet_lo":     None,
+        "sweet_hi":     None,
+        "sweet_label":  None,
+        "best_fmt":     lambda v, kge: f"Best run (αB={v:g}, KGE={kge:.3f})",
+    },
+    "thetaS_mult": {
+        "xlabel":       "θs multiplier (× baseline per-class values)",
+        "log_x":        False,
+        "tick_fmt":     lambda v, _: f"{v:g}x",
+        "colorbar_lbl": "θs multiplier",
+        "color_low":    "Purple = low θs (less storage, more runoff)",
+        "color_high":   "Yellow = high θs (more storage, less runoff)",
+        "baseline":     1.0,
+        "sweet_lo":     None,
+        "sweet_hi":     None,
+        "sweet_label":  None,
+        "best_fmt":     lambda v, kge: f"Best run (θs={v:g}×, KGE={kge:.3f})",
+    },
+    "psiB_mult": {
+        "xlabel":       "PsiB multiplier (× baseline per-class values)",
+        "log_x":        True,
+        "tick_fmt":     lambda v, _: f"{v:g}x",
+        "colorbar_lbl": "PsiB multiplier",
+        "color_low":    "Purple = low PsiB mult (weaker capillary suction)",
+        "color_high":   "Yellow = high PsiB mult (stronger capillary suction)",
+        "baseline":     1.0,
+        "sweet_lo":     0.8,
+        "sweet_hi":     1.25,
+        "sweet_label":  "LHS range (0.8–1.25×)",
+        "best_fmt":     lambda v, kge: f"Best run (PsiB_mult={v:g}×, KGE={kge:.3f})",
+    },
+    "As_value": {
+        "xlabel":       "Saturated anisotropy ratio (As)",
+        "log_x":        True,
+        "tick_fmt":     lambda v, _: f"{v:g}",
+        "colorbar_lbl": "As",
+        "color_low":    "Purple = isotropic (As=1, no lateral saturated flow)",
+        "color_high":   "Yellow = high As (strong lateral saturated flow)",
+        "baseline":     1.0,
+        "sweet_lo":     None,
+        "sweet_hi":     None,
+        "sweet_label":  None,
+        "best_fmt":     lambda v, kge: f"Best run (As={v:g}, KGE={kge:.3f})",
+    },
+    "Au_value": {
+        "xlabel":       "Unsaturated anisotropy ratio (Au)",
+        "log_x":        True,
+        "tick_fmt":     lambda v, _: f"{v:g}",
+        "colorbar_lbl": "Au",
+        "color_low":    "Purple = isotropic (Au=1, no lateral unsaturated flow)",
+        "color_high":   "Yellow = high Au (strong lateral unsaturated flow)",
+        "baseline":     1.0,
+        "sweet_lo":     None,
+        "sweet_hi":     None,
+        "sweet_label":  None,
+        "best_fmt":     lambda v, kge: f"Best run (Au={v:g}, KGE={kge:.3f})",
+    },
+    "AsAu_value": {
+        "xlabel":       "Anisotropy ratio (As = Au, swept together)",
+        "log_x":        True,
+        "tick_fmt":     lambda v, _: f"{v:g}",
+        "colorbar_lbl": "As = Au",
+        "color_low":    "Purple = isotropic (As=Au=1, no lateral flow)",
+        "color_high":   "Yellow = high anisotropy (strong lateral saturated + unsaturated flow)",
+        "baseline":     1.0,
+        "sweet_lo":     None,
+        "sweet_hi":     None,
+        "sweet_label":  None,
+        "best_fmt":     lambda v, kge: f"Best run (As=Au={v:g}, KGE={kge:.3f})",
     },
 }
 
@@ -179,15 +249,15 @@ def main():
     nse     = param_df["nse"].values
     rmse    = param_df["rmse_m3s"].values
     pbias   = param_df["pbias_pct"].values
+    timing  = param_df["peak_timing_error_hr"].values
+    sim_pk  = param_df["sim_peak_m3s"].values
+    obs_pk  = param_df["obs_peak_m3s"].values[0]
+    sim_vol = param_df["sim_volume_m3"].values
+    obs_vol = param_df["obs_volume_m3"].values[0]
+    run_ids = param_df["run_id"].values
     kge_r   = param_df["kge_r"].values
     kge_a   = param_df["kge_alpha"].values
     kge_b   = param_df["kge_beta"].values
-    sim_pk  = param_df["sim_peak_m3s"].values
-    obs_pk  = param_df["obs_peak_m3s"].values[0]
-    obs_vol = param_df["obs_volume_m3"].values[0]
-    sim_vol = param_df["sim_volume_m3"].values
-    timing  = param_df["peak_timing_error_hr"].values
-    run_ids = param_df["run_id"].values
 
     # -----------------------------------------------------------------------
     # FIGURE 1: Sensitivity curve

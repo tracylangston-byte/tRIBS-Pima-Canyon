@@ -5,12 +5,16 @@ Builds one tRIBS input file for a single-parameter sensitivity run.
 Mirrors the logic of Make_SMF_Model.ipynb exactly.
 
 Usage (run from the smf_demo directory):
-    python build_sensitivity_run.py --param Ks_mult            --value 6.0
-    python build_sensitivity_run.py --param f_RS_abs           --value 0.010
-    python build_sensitivity_run.py --param f_RS_abs_Ks1       --value 0.025
-    python build_sensitivity_run.py --param kinemvelcoef       --value 5.0
-    python build_sensitivity_run.py --param flowexp            --value 0.5
-    python build_sensitivity_run.py --param channelroughness   --value 0.08
+    python build_sensitivity_run.py --param Ks_mult              --value 6.0
+    python build_sensitivity_run.py --param f_RS_abs             --value 0.010
+    python build_sensitivity_run.py --param kinemvelcoef         --value 5.0
+    python build_sensitivity_run.py --param flowexp              --value 0.5
+    python build_sensitivity_run.py --param channelroughness     --value 0.08
+    python build_sensitivity_run.py --param channelwidthcoeff    --value 1.5
+    python build_sensitivity_run.py --param thetaS_mult          --value 1.1
+    python build_sensitivity_run.py --param As_value             --value 5.0
+    python build_sensitivity_run.py --param Au_value             --value 5.0
+    python build_sensitivity_run.py --param AsAu_value           --value 5.0
 
 These are for running a single build manually from the terminal — useful
 if you want to test one value, inspect the soil audit output, or rebuild
@@ -20,19 +24,21 @@ for every value in the sweep list.
 
 Naming convention (no decimal points):
     Ks_mult          -> series 60 -> SMF_20140812_60_Ks6p0x
-    f_RS_abs         -> series 61 -> SMF_20140812_61_fRS0p010       (Ks_mult = 7x)
-    f_RS_abs_Ks1     -> series 65 -> SMF_20140812_65_fRS0p025_Ks1  (Ks_mult = 1x)
+    f_RS_abs         -> series 61 -> SMF_20140812_61_fRS0p010
     kinemvelcoef     -> series 62 -> SMF_20140812_62_cv5p0
     flowexp          -> series 63 -> SMF_20140812_63_r0p50
     channelroughness -> series 64 -> SMF_20140812_64_n0p080
+    channelwidthcoeff-> series 65 -> SMF_20140812_65_cw1p5
+    psiB_mult        -> series 59 -> SMF_20140812_59_psiB1p25x
+    thetaS_mult      -> series 67 -> SMF_20140812_67_thS1p10x
+    As_value         -> series 68 -> SMF_20140812_68_As5p0
+    Au_value         -> series 69 -> SMF_20140812_69_Au5p0
+    AsAu_value       -> series 66 -> SMF_20140812_66_AsAu5p0
 
-Notes on f_RS_abs and f_RS_abs_Ks1:
-    Both sweep ABSOLUTE f for the RS soil class (soil ID '1') only.
+Notes on f_RS_abs:
+    Sweeps ABSOLUTE f for the RS soil class (soil ID '1') only.
     All other soil classes (CO, CeD, EbD, Cb) are held at their baseline f.
-    The difference is Ks_mult:
-        f_RS_abs      uses Ks_mult = 6.1 (best calibrated Ks)
-        f_RS_abs_Ks1  uses Ks_mult = 1.0 (uncalibrated baseline Ks)
-    This lets you compare how the f response curve changes with Ks.
+    Ks_mult is held at best calibrated value (6.1x).
 
     Baseline f values by class:
         RS  (ID 1): 0.020  (1/f =  50 mm — caliche-controlled)
@@ -40,6 +46,12 @@ Notes on f_RS_abs and f_RS_abs_Ks1:
         CeD (ID 3): 0.002  (1/f = 500 mm)
         EbD (ID 4): 0.002  (1/f = 500 mm)
         Cb  (ID 5): 0.001  (1/f = 1000 mm)
+
+Notes on thetaS_mult:
+    Multiplier applied uniformly across all soil classes.
+    thetaS_mult = 1.0 reproduces baseline per-class thetaS values exactly.
+    Physical constraint: thetaS must remain > thetaR for each class.
+    Baseline per-class thetaS: RS=0.40, CO=0.40, CeD=0.40, EbD=0.42, Cb=0.39.
 """
 
 import argparse
@@ -58,28 +70,34 @@ from pathlib import Path
 # -----------------------------------------------------------------------
 BASELINE = {
     "Ks_mult":           6.1,    # best calibrated value from Ks/f sweep
-    "f_RS_abs":          0.020,  # absolute f for RS soil (1/mm), best calibrated value from Ks/f sweep
-    "f_RS_abs_Ks1":      0.020,  # NA in this run
+    "f_RS_abs":          0.020,  # absolute f for RS soil (1/mm)
     "As_value":          1.0,
     "Au_value":          1.0,
+    "AsAu_value":        1.0,    # combined sweep: sets both As and Au to the same value
+    "thetaS_mult":       1.0,    # multiplier on per-class baseline thetaS
+    "psiB_mult":         1.0,    # multiplier on per-class baseline PsiB (series 59)
     "optpercolation":    0,
     "channelconductivity_mmhr": 70,
     "channelporosity":   0.4,
-    "kinemvelcoef":      3,      # I am not starting from the pure best-KGE Ks × cv pair (Ks ≈ 4.49, cv ≈ 2.74), 
-                                 # because that region still has too much positive volume bias. 
+    "kinemvelcoef":      3,
     "flowexp":           0.3,    # best calibrated value from flowexp sweep
-    "channelroughness":  0.04,   # <- this gets overridden per run
+    "channelroughness":  0.04,
     "channelwidthcoeff": 2.33,
 }
 
 # Series number and label prefix per parameter
 PARAM_CONFIG = {
-    "Ks_mult":           {"series": "60", "prefix": "Ks",          "suffix": "x",    "type": "multiplier"},
-    "f_RS_abs":          {"series": "61", "prefix": "fRS",         "suffix": "",     "type": "absolute"},
-    "kinemvelcoef":      {"series": "62", "prefix": "cv",          "suffix": "",     "type": "absolute"},
-    "flowexp":           {"series": "63", "prefix": "r",           "suffix": "",     "type": "absolute"},
-    "channelroughness":  {"series": "64", "prefix": "n",           "suffix": "",     "type": "absolute"},
-    "f_RS_abs_Ks1":      {"series": "65", "prefix": "fRS",         "suffix": "_Ks1", "type": "absolute"},
+    "Ks_mult":           {"series": "60", "prefix": "Ks",   "suffix": "x",  "type": "multiplier"},
+    "f_RS_abs":          {"series": "61", "prefix": "fRS",  "suffix": "",   "type": "absolute"},
+    "kinemvelcoef":      {"series": "62", "prefix": "cv",   "suffix": "",   "type": "absolute"},
+    "flowexp":           {"series": "63", "prefix": "r",    "suffix": "",   "type": "absolute"},
+    "channelroughness":  {"series": "64", "prefix": "n",    "suffix": "",   "type": "absolute"},
+    "channelwidthcoeff": {"series": "65", "prefix": "cw",   "suffix": "",   "type": "absolute"},
+    "psiB_mult":         {"series": "59", "prefix": "psiB", "suffix": "x",  "type": "multiplier"},
+    "thetaS_mult":       {"series": "67", "prefix": "thS",  "suffix": "x",  "type": "multiplier"},
+    "As_value":          {"series": "68", "prefix": "As",   "suffix": "",   "type": "absolute"},
+    "Au_value":          {"series": "69", "prefix": "Au",   "suffix": "",   "type": "absolute"},
+    "AsAu_value":        {"series": "66", "prefix": "AsAu", "suffix": "",   "type": "absolute"},
 }
 
 # Fixed simulation settings
@@ -93,8 +111,9 @@ EVENT_END      = "2014-08-13 12:00"
 EPSG           = 26912
 
 # Soil parameter baselines per class.
-# RS f is overridden by the swept value for f_RS_abs and f_RS_abs_Ks1 runs.
-# All other classes always use the f listed here.
+# RS f is overridden by the swept value for f_RS_abs runs.
+# thetaS is overridden by thetaS_mult for thetaS_mult runs.
+# All other params always use the values listed here.
 SOIL_PARAM_LOOKUP = {
     '1': {'Ks': 3.6,  'thetaS': 0.40, 'thetaR': 0.06, 'm': 0.38, 'PsiB': -390, 'f': 0.020, 'n': 0.40},
     '2': {'Ks': 2.8,  'thetaS': 0.40, 'thetaR': 0.05, 'm': 0.25, 'PsiB': -401, 'f': 0.002, 'n': 0.40},
@@ -113,7 +132,7 @@ LAND_PARAM_LOOKUP = {
 def value_to_label(value):
     s = f"{value:.6f}".rstrip('0')
     if s.endswith('.'):
-        s = s[:-1] + 'p0'   # preserve the trailing zero for integers like 1.0
+        s = s[:-1] + 'p0'
     elif '.' in s:
         s = s.replace('.', 'p')
     return s
@@ -129,7 +148,7 @@ def build_run_id(param_name, value):
 def get_run_category(series_str):
     """Map series number to calibration folder category."""
     n = int(series_str)
-    if 60 <= n <= 69:
+    if 59 <= n <= 69:   # 59 = psiB_mult; 60-69 = other single-param sweeps
         return "60_sensitivity"
     return "40_multivariable"
 
@@ -166,22 +185,13 @@ def build_input_file(param_name, value):
     output_prefix = os.path.relpath(output_prefix_abs, notebook_dir)
 
     # --- Resolve parameter values for this run ---
-    params = {**BASELINE}       # start from baseline
-    params[param_name] = value  # override just the swept param
-
-    # f_RS_abs_Ks1 sweeps f but forces Ks_mult to 1.0 regardless of BASELINE
-    if param_name == "f_RS_abs_Ks1":
-        params["Ks_mult"] = 1.0
+    params = {**BASELINE}
+    params[param_name] = value
 
     Ks_mult                  = params["Ks_mult"]
-    # Resolve f_RS_abs: both f_RS_abs and f_RS_abs_Ks1 sweep RS soil f
-    if param_name == "f_RS_abs_Ks1":
-        f_RS_abs = value
-    else:
-        f_RS_abs = params["f_RS_abs"]
-
-    As_value                 = params["As_value"]
-    Au_value                 = params["Au_value"]
+    f_RS_abs                 = params["f_RS_abs"]
+    thetaS_mult              = params["thetaS_mult"]
+    psiB_mult                = params["psiB_mult"]
     optpercolation           = params["optpercolation"]
     channelconductivity_mmhr = params["channelconductivity_mmhr"]
     channelporosity          = params["channelporosity"]
@@ -189,6 +199,15 @@ def build_input_file(param_name, value):
     flowexp                  = params["flowexp"]
     channelroughness         = params["channelroughness"]
     channelwidthcoeff        = params["channelwidthcoeff"]
+
+    # AsAu_value sets both As and Au to the same swept value; individual
+    # As_value and Au_value sweeps leave the other held at its BASELINE.
+    if param_name == "AsAu_value":
+        As_value = value
+        Au_value = value
+    else:
+        As_value = params["As_value"]
+        Au_value = params["Au_value"]
 
     # --- pytRIBS setup ---
     name = LOCATION
@@ -219,9 +238,6 @@ def build_input_file(param_name, value):
 
     soil_table = soil.read_soil_table(textures=True)
 
-    # f sweep params: both f_RS_abs and f_RS_abs_Ks1 override RS soil f only
-    f_params = {"f_RS_abs", "f_RS_abs_Ks1"}
-
     for cls in soil_table:
         cls['As'] = As_value
         cls['Au'] = Au_value
@@ -231,14 +247,15 @@ def build_input_file(param_name, value):
         if cid in SOIL_PARAM_LOOKUP:
             sp = SOIL_PARAM_LOOKUP[cid]
             cls['Ks']     = sp['Ks'] * Ks_mult
-            cls['thetaS'] = sp['thetaS']
             cls['thetaR'] = sp['thetaR']
             cls['m']      = sp['m']
-            cls['PsiB']   = sp['PsiB']
+            cls['PsiB']   = sp['PsiB'] * psiB_mult
             cls['n']      = sp['n']
-            # RS soil (ID '1') uses swept f for both f sweep parameter types.
-            # All other classes always use their baseline f from the lookup.
-            if cid == '1' and param_name in f_params:
+            # thetaS: apply multiplier uniformly; guard against thetaS <= thetaR
+            raw_thetaS = sp['thetaS'] * thetaS_mult
+            cls['thetaS'] = max(raw_thetaS, sp['thetaR'] + 0.01)
+            # f: RS soil uses swept value for f_RS_abs; all others use baseline
+            if cid == '1' and param_name == "f_RS_abs":
                 cls['f'] = f_RS_abs
             else:
                 cls['f'] = sp['f']
@@ -321,69 +338,6 @@ def build_input_file(param_name, value):
     # Write input file
     model.write_input_file(input_file)
 
-    # THIS SECTION NOT NEEDED IF f IS NOT BEING SWEPT
-    # # Print soil audit
-    # print(f"\n  Soil table for {run_id}:")
-    # print(f"  {'ID':<4} {'Texture':<6} {'Ks (mm/hr)':<14} {'f (1/mm)':<12} {'1/f (mm)':<10} {'% of watershed'}")
-    # print(f"  {'-'*4} {'-'*6} {'-'*14} {'-'*12} {'-'*10} {'-'*15}")
-
-    # # Calculate soil class area fractions within the watershed boundary
-    # soil_pct = {}
-    # try:
-    #     from rasterio.features import geometry_mask
-    #     from shapely.geometry import mapping
-
-    #     raw_map = InOut.read_ascii(soil_ras)
-    #     data      = raw_map['data']
-    #     profile   = raw_map['profile']
-    #     transform = profile['transform']
-
-    #     if data.ndim == 3:
-    #         data = data[0]
-
-    #     watershed_gdf = proj.meta.get('watershed_gdf', None)
-    #     if watershed_gdf is None:
-    #         import geopandas as gpd
-    #         ws_candidates = list(Path(proj.directories['preprocessing']).glob("*watershed*.shp"))
-    #         if ws_candidates:
-    #             watershed_gdf = gpd.read_file(ws_candidates[0])
-
-    #     if watershed_gdf is not None:
-    #         inside = geometry_mask(
-    #             [mapping(geom) for geom in watershed_gdf.geometry],
-    #             out_shape=data.shape,
-    #             transform=transform,
-    #             invert=True,
-    #             all_touched=False
-    #         )
-    #     else:
-    #         inside = np.ones(data.shape, dtype=bool)
-
-    #     nodata = profile.get('nodata', None)
-    #     valid  = inside & np.isfinite(data) & (data >= 0)
-    #     if nodata is not None:
-    #         valid = valid & (data != nodata)
-
-    #     soil_values = data[valid]
-    #     if len(soil_values) > 0:
-    #         counts = pd.Series(soil_values).value_counts().sort_index()
-    #         total  = counts.sum()
-    #         for sid, cnt in counts.items():
-    #             soil_pct[str(int(sid))] = 100.0 * cnt / total
-    # except Exception as e:
-    #     print(f"  (soil % calculation skipped: {e})")
-
-    # for cls in soil_table:
-    #     cid    = str(cls['ID'])
-    #     tex    = cls.get('Texture', '')
-    #     ks_val = cls['Ks']
-    #     f_val  = cls['f']
-    #     depth  = 1.0 / f_val if f_val > 0 else float('inf')
-    #     pct    = soil_pct.get(cid, float('nan'))
-    #     marker = " <-- swept" if cid == '1' and param_name in f_params else ""
-    #     pct_str = f"{pct:.1f}%" if not np.isnan(pct) else "n/a"
-    #     print(f"  {cid:<4} {tex:<6} {ks_val:<14.3f} {f_val:<12.4f} {depth:<10.0f} {pct_str}{marker}")
-
     # Save run config JSON
     current_run_config = {
         "location":                  LOCATION,
@@ -401,6 +355,8 @@ def build_input_file(param_name, value):
         "f_RS_abs":                  f_RS_abs,
         "As_value":                  As_value,
         "Au_value":                  Au_value,
+        "thetaS_mult":               thetaS_mult,
+        "psiB_mult":                 psiB_mult,
         "optpercolation":            optpercolation,
         "channelconductivity_mmhr":  channelconductivity_mmhr,
         "channelporosity":           channelporosity,

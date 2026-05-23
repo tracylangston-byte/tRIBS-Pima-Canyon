@@ -1,26 +1,30 @@
 """
-plot_lhs_5param.py
+plot_lhs_6param.py
 ==================
-Generates all diagnostic figures from a 5-parameter LHS sweep.
-Easily switchable between series 80 (KsLo) and series 81 (KsHi)
-by editing the two lines in the CONFIG block below.
+Generates all diagnostic figures from the 6-parameter LHS sweep (series 82).
+Adds psiB_mult as the 5th swept dimension on top of the 5-param series 81 layout.
 
 Usage (run from the smf_demo directory):
-    python plot_lhs_5param.py
+    python plot_lhs_6param.py
 
-Produces 8 figures saved to:
+Produces 10 figures saved to:
     calibration_work/03_comparisons/sensitivity_plots/{SERIES_LABEL}/
 
 Figure list
 -----------
     fig1_hydrograph_envelope_all.png   — All runs: envelope + median + best run
     fig2_hydrograph_envelope_kge0.png  — KGE > 0 runs only + filtered median
-    fig3_correlation_bar.png           — Pearson r of each swept param vs KGE
-    fig4_parallel_coordinates.png      — All 4 params as vertical axes, lines colored by KGE
-    fig5_pairwise_scatter.png          — 6-panel pairwise scatter matrix, colored by KGE
-    fig6_kge_vs_each_param.png         — 4-panel KGE vs each parameter (1D response curves)
-    fig7_pbias_vs_kge.png              — PBIAS vs KGE scatter
+    fig3_correlation_bar.png           — Pearson r of each swept param vs KGE (5 bars)
+    fig4_parallel_coordinates.png      — All 5 params as vertical axes, lines colored by KGE
+    fig5_pairwise_scatter.png          — 10-panel pairwise scatter matrix, colored by KGE
+    fig6_kge_vs_each_param.png         — 5-panel KGE vs each parameter (1D response curves)
+    fig7_pbias_vs_kge.png              — PBIAS vs KGE scatter, points colored by Ks multiplier
     fig8_top15_table.png               — Top-15 runs by KGE as formatted table
+    fig9_kge_components_vs_ks.png      — r / alpha / beta each vs Ks, colored by KGE
+    fig10_psib_sensitivity.png         — 3-panel psiB_mult deep-dive:
+                                          (a) KGE vs psiB_mult, colored by Ks
+                                          (b) psiB_mult vs Ks_mult, colored by KGE
+                                          (c) PBIAS vs psiB_mult, colored by KGE
 """
 
 import pandas as pd
@@ -32,10 +36,10 @@ from itertools import combinations
 from pathlib import Path
 
 # =======================================================================
-# CONFIG — edit these two lines to switch between series
+# CONFIG — edit these two lines to switch between series if needed
 # =======================================================================
-RESULTS_CSV  = "lhs_results_5param_KsLo.csv"   # or "lhs_results_5param_KsHi.csv"
-SERIES_LABEL = "Series80_KsLo"                  # or "Series81_KsHi"
+RESULTS_CSV  = "lhs_results_6param_82.csv"
+SERIES_LABEL = "Series82_6param_psiB"
 # =======================================================================
 
 EVENT_LABEL      = "SMF Aug 12, 2014"
@@ -60,14 +64,14 @@ results_path = summary_dir / RESULTS_CSV
 if not results_path.exists():
     raise FileNotFoundError(
         f"LHS results not found: {results_path}\n"
-        f"Run the appropriate run_lhs_5param.py first."
+        f"Run run_lhs_6param.py first."
     )
 
 df = pd.read_csv(results_path)
 print(f"Loaded {len(df)} LHS runs from {results_path.name}")
 
 required_cols = ["run_id", "Ks_mult", "kinemvelcoef", "flowexp", "channelroughness",
-                 "kge", "nse", "pbias_pct", "kge_r", "kge_alpha", "kge_beta"]
+                 "psiB_mult", "kge", "nse", "pbias_pct", "kge_r", "kge_alpha", "kge_beta"]
 missing = [c for c in required_cols if c not in df.columns]
 if missing:
     raise ValueError(f"Missing columns in results CSV: {missing}\n"
@@ -76,15 +80,10 @@ if missing:
 df = df.dropna(subset=required_cols).reset_index(drop=True)
 print(f"  {len(df)} runs after dropping NaN rows")
 
-# SERIES_TITLE built from actual data — Ks range is always accurate
+# Build series title from actual data
 ks_lo = df["Ks_mult"].min()
 ks_hi = df["Ks_mult"].max()
-if "KsLo" in SERIES_LABEL:
-    SERIES_TITLE = f"Series 80  |  Ks {ks_lo:.1f}-{ks_hi:.1f}x"
-elif "KsHi" in SERIES_LABEL:
-    SERIES_TITLE = f"Series 81  |  Ks {ks_lo:.1f}-{ks_hi:.1f}x"
-else:
-    SERIES_TITLE = f"{SERIES_LABEL}  |  Ks {ks_lo:.1f}-{ks_hi:.1f}x"
+SERIES_TITLE = f"Series 82  |  Ks {ks_lo:.1f}-{ks_hi:.1f}x  |  +psiB_mult"
 
 print(f"Series: {SERIES_TITLE}")
 print(f"Plots -> {plot_dir}")
@@ -94,6 +93,7 @@ ks_vals    = df["Ks_mult"].values
 cv_vals    = df["kinemvelcoef"].values
 r_vals     = df["flowexp"].values
 n_vals     = df["channelroughness"].values
+psib_vals  = df["psiB_mult"].values
 kge_vals   = df["kge"].values
 nse_vals   = df["nse"].values
 pbias_vals = df["pbias_pct"].values
@@ -107,20 +107,18 @@ print(f"  Best KGE: {best_kge:.3f}")
 print(f"  KGE range:   {kge_vals.min():.3f} to {kge_vals.max():.3f}")
 print(f"  PBIAS range: {pbias_vals.min():.1f}% to {pbias_vals.max():.1f}%")
 
-# Swept parameter metadata
+# Swept parameter metadata — 5 params in display order
 PARAMS = {
-    "Ks_mult":          {"label": "Ks multiplier",               "vals": ks_vals, "fmt": "{:.2f}x"},
-    "kinemvelcoef":     {"label": "Hillslope velocity coef. cv", "vals": cv_vals, "fmt": "{:.2f}"},
-    "flowexp":          {"label": "Hillslope velocity exp. r",   "vals": r_vals,  "fmt": "{:.3f}"},
-    "channelroughness": {"label": "Channel roughness n",         "vals": n_vals,  "fmt": "{:.4f}"},
+    "Ks_mult":          {"label": "Ks multiplier",               "vals": ks_vals,   "fmt": "{:.2f}x"},
+    "kinemvelcoef":     {"label": "Hillslope velocity coef. cv", "vals": cv_vals,   "fmt": "{:.2f}"},
+    "flowexp":          {"label": "Hillslope velocity exp. r",   "vals": r_vals,    "fmt": "{:.3f}"},
+    "channelroughness": {"label": "Channel roughness n",         "vals": n_vals,    "fmt": "{:.4f}"},
+    "psiB_mult":        {"label": "Air-entry pressure PsiB mult","vals": psib_vals, "fmt": "{:.3f}x"},
 }
 PARAM_KEYS   = list(PARAMS.keys())
 PARAM_LABELS = [PARAMS[k]["label"] for k in PARAM_KEYS]
 
-# KGE colormap — plasma has no white/near-white values on a white background.
-# Norm uses 5th-95th percentile of actual data with clip=True so:
-#   (a) colour range reflects the real spread of results
-#   (b) norm_val is always in [0,1], preventing alpha ValueError
+# KGE colormap (plasma, no near-white values on white background)
 KGE_CMAP = plt.get_cmap("plasma")
 kge_p05  = np.percentile(kge_vals, 5)
 kge_p95  = np.percentile(kge_vals, 95)
@@ -172,7 +170,6 @@ if obs_series is None:
 
 # -----------------------------------------------------------------------
 # FIGURES 1 & 2: Hydrograph uncertainty envelopes
-# Cropped to event window for readability.
 # -----------------------------------------------------------------------
 def plot_hydrograph_envelope(hydros_subset, df_subset, title_suffix, filename,
                               envelope_color, median_color, filter_label):
@@ -193,7 +190,6 @@ def plot_hydrograph_envelope(hydros_subset, df_subset, title_suffix, filename,
         print(f"  Skipping {filename} — sim_matrix empty after dropna.")
         return
 
-    # Crop to event window
     sim_matrix  = sim_matrix.loc[EVENT_CROP_START:EVENT_CROP_END]
     obs_cropped = obs_series.reindex(sim_matrix.index)
 
@@ -234,7 +230,7 @@ def plot_hydrograph_envelope(hydros_subset, df_subset, title_suffix, filename,
     ax.set_ylabel("Discharge (m3/s)", fontsize=11)
     ax.set_title(
         f"Hydrograph uncertainty — {title_suffix}  (n={n_runs})\n"
-        f"5-parameter LHS  |  {SERIES_TITLE}  |  {EVENT_LABEL}",
+        f"6-parameter LHS  |  {SERIES_TITLE}  |  {EVENT_LABEL}",
         fontsize=12
     )
     ax.legend(fontsize=9, loc="upper right", facecolor="white", framealpha=0.9)
@@ -271,20 +267,20 @@ plot_hydrograph_envelope(
 
 
 # -----------------------------------------------------------------------
-# FIGURE 3: Pearson correlation bar chart
+# FIGURE 3: Pearson correlation bar chart (now 5 bars)
 # -----------------------------------------------------------------------
 print("Figure 3: Correlation bar chart")
 
 correlations = {key: np.corrcoef(df[key].values, kge_vals)[0, 1] for key in PARAM_KEYS}
 
-fig, ax = plt.subplots(figsize=(8, 4.5))
+fig, ax = plt.subplots(figsize=(9, 5))
 bar_colors = ["#2ecc71" if v >= 0 else "#e74c3c" for v in correlations.values()]
 bars = ax.barh(PARAM_LABELS, list(correlations.values()),
                color=bar_colors, edgecolor="white", height=0.55)
 ax.axvline(0, color="black", linewidth=0.8)
 ax.set_xlabel("Pearson r  (parameter value vs KGE)", fontsize=11)
 ax.set_title(
-    f"Parameter-KGE correlations — 5-param LHS  {SERIES_TITLE}  (n={len(df)})\n"
+    f"Parameter-KGE correlations — 6-param LHS  {SERIES_TITLE}  (n={len(df)})\n"
     f"{EVENT_LABEL}  |  Green = higher value -> better KGE  |  Red = opposite",
     fontsize=11
 )
@@ -301,7 +297,7 @@ save_fig(fig, "fig3_correlation_bar.png")
 
 
 # -----------------------------------------------------------------------
-# FIGURE 4: Parallel coordinates
+# FIGURE 4: Parallel coordinates (5 axes now)
 # -----------------------------------------------------------------------
 print("Figure 4: Parallel coordinates")
 
@@ -313,16 +309,15 @@ param_norm   = (param_arrays - param_mins) / (param_maxs - param_mins + 1e-12)
 n_params    = len(PARAM_KEYS)
 x_positions = np.arange(n_params)
 
-fig, ax = plt.subplots(figsize=(12, 6))
+fig, ax = plt.subplots(figsize=(14, 6))
 
 for i in np.argsort(kge_vals):
     color    = KGE_CMAP(KGE_NORM(kge_vals[i]))
-    norm_val = float(KGE_NORM(kge_vals[i]))   # clip=True guarantees [0,1]; float() avoids masked array issues
+    norm_val = float(KGE_NORM(kge_vals[i]))
     alpha    = 0.35 + 0.50 * norm_val
     ax.plot(x_positions, param_norm[i], color=color, alpha=alpha,
             linewidth=1.4, zorder=int(norm_val * 100))
 
-# Best run in red so it stands out against the plasma colormap
 ax.plot(x_positions, param_norm[best_idx],
         color="red", linewidth=2.5, zorder=200,
         label=f"Best run  KGE={best_kge:.3f}")
@@ -337,12 +332,12 @@ for j, (key, label) in enumerate(zip(PARAM_KEYS, PARAM_LABELS)):
             transform=ax.get_xaxis_transform())
 
 ax.set_xticks(x_positions)
-ax.set_xticklabels(PARAM_LABELS, fontsize=10)
+ax.set_xticklabels(PARAM_LABELS, fontsize=9)
 ax.set_yticks([0, 0.5, 1.0])
 ax.set_yticklabels(["Min", "Mid", "Max"], fontsize=9)
 ax.set_ylabel("Normalised parameter value", fontsize=10)
 ax.set_title(
-    f"Parallel coordinates — 5-param LHS  {SERIES_TITLE}  (n={len(df)})\n"
+    f"Parallel coordinates — 6-param LHS  {SERIES_TITLE}  (n={len(df)})\n"
     f"Lines colored by KGE  |  {EVENT_LABEL}  |  f fixed at 0.020 mm^-1",
     fontsize=12
 )
@@ -355,15 +350,15 @@ save_fig(fig, "fig4_parallel_coordinates.png")
 
 
 # -----------------------------------------------------------------------
-# FIGURE 5: Pairwise scatter matrix
+# FIGURE 5: Pairwise scatter matrix — C(5,2) = 10 panels
 # -----------------------------------------------------------------------
-print("Figure 5: Pairwise scatter matrix")
+print("Figure 5: Pairwise scatter matrix (10 panels)")
 
-pairs  = list(combinations(range(n_params), 2))
-n_cols = 3
-n_rows = (len(pairs) + n_cols - 1) // n_cols
+pairs  = list(combinations(range(n_params), 2))   # 10 pairs for 5 params
+n_cols = 4
+n_rows = (len(pairs) + n_cols - 1) // n_cols       # 3 rows of 4 (last row has 2 + 2 blank)
 
-fig, axes = plt.subplots(n_rows, n_cols, figsize=(15, 9))
+fig, axes = plt.subplots(n_rows, n_cols, figsize=(16, 11))
 axes_flat = axes.flat
 
 for ax_i, (pi, pj) in enumerate(pairs):
@@ -375,9 +370,9 @@ for ax_i, (pi, pj) in enumerate(pairs):
     ax.scatter(df[ki].iloc[best_idx], df[kj].iloc[best_idx],
                s=150, marker="*", color="white", edgecolors="black",
                linewidths=1.2, zorder=5, label=f"Best KGE={best_kge:.3f}")
-    ax.set_xlabel(PARAMS[ki]["label"], fontsize=9)
-    ax.set_ylabel(PARAMS[kj]["label"], fontsize=9)
-    ax.legend(fontsize=7.5, loc="upper right", facecolor="white", framealpha=0.8)
+    ax.set_xlabel(PARAMS[ki]["label"], fontsize=8)
+    ax.set_ylabel(PARAMS[kj]["label"], fontsize=8)
+    ax.legend(fontsize=7, loc="upper right", facecolor="white", framealpha=0.8)
     ax.grid(alpha=0.25)
 
 for ax_i in range(len(pairs), n_rows * n_cols):
@@ -387,7 +382,7 @@ sm = plt.cm.ScalarMappable(cmap=KGE_CMAP, norm=KGE_NORM)
 sm.set_array([])
 fig.colorbar(sm, ax=axes.ravel().tolist(), label="KGE", shrink=0.6, pad=0.02)
 fig.suptitle(
-    f"Pairwise parameter scatter — 5-param LHS  {SERIES_TITLE}  (n={len(df)})\n"
+    f"Pairwise parameter scatter — 6-param LHS  {SERIES_TITLE}  (n={len(df)})\n"
     f"Colored by KGE  |  {EVENT_LABEL}  |  star = best run",
     fontsize=13
 )
@@ -396,13 +391,21 @@ save_fig(fig, "fig5_pairwise_scatter.png")
 
 
 # -----------------------------------------------------------------------
-# FIGURE 6: KGE vs each parameter — 1D response curves
+# FIGURE 6: KGE vs each parameter — 1D response curves (now 5 panels)
 # -----------------------------------------------------------------------
 print("Figure 6: KGE vs each parameter (1D response)")
 
-fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+# 5 params: use a 3+2 layout (3 top row, 2 bottom row centred)
+fig = plt.figure(figsize=(15, 9))
+gs  = fig.add_gridspec(2, 6, hspace=0.4, wspace=0.4)
+axes_top = [fig.add_subplot(gs[0, 0:2]),
+            fig.add_subplot(gs[0, 2:4]),
+            fig.add_subplot(gs[0, 4:6])]
+axes_bot = [fig.add_subplot(gs[1, 1:3]),
+            fig.add_subplot(gs[1, 3:5])]
+all_axes = axes_top + axes_bot
 
-for ax, key in zip(axes.flat, PARAM_KEYS):
+for ax, key in zip(all_axes, PARAM_KEYS):
     xi = df[key].values
     ax.scatter(xi, kge_vals, c=kge_vals, cmap=KGE_CMAP, norm=KGE_NORM,
                s=28, edgecolors="white", linewidths=0.4, alpha=0.85, zorder=3)
@@ -418,17 +421,16 @@ for ax, key in zip(axes.flat, PARAM_KEYS):
     ax.plot(xs_sorted, ys_smooth, color="navy", linewidth=1.6,
             linestyle="--", alpha=0.7, label="Rolling median")
     ax.axhline(0, color="gray", linewidth=0.8, linestyle=":", alpha=0.6)
-    ax.set_xlabel(PARAMS[key]["label"], fontsize=10)
-    ax.set_ylabel("KGE", fontsize=10)
-    ax.legend(fontsize=8, loc="lower right", facecolor="white", framealpha=0.85)
+    ax.set_xlabel(PARAMS[key]["label"], fontsize=9)
+    ax.set_ylabel("KGE", fontsize=9)
+    ax.legend(fontsize=7.5, loc="lower right", facecolor="white", framealpha=0.85)
     ax.grid(alpha=0.25)
 
 fig.suptitle(
-    f"KGE response to each parameter — 5-param LHS  {SERIES_TITLE}  (n={len(df)})\n"
+    f"KGE response to each parameter — 6-param LHS  {SERIES_TITLE}  (n={len(df)})\n"
     f"{EVENT_LABEL}  |  Dashed = rolling median  |  f fixed at 0.020 mm^-1",
     fontsize=12
 )
-fig.tight_layout()
 save_fig(fig, "fig6_kge_vs_each_param.png")
 
 
@@ -450,7 +452,7 @@ ax.axhline(0, color="gray",  linewidth=0.8, linestyle=":",  alpha=0.5,
 ax.set_xlabel("PBIAS (%)  — positive = over-predict volume", fontsize=11)
 ax.set_ylabel("KGE", fontsize=11)
 ax.set_title(
-    f"PBIAS vs KGE — 5-param LHS  {SERIES_TITLE}  (n={len(df)})\n"
+    f"PBIAS vs KGE — 6-param LHS  {SERIES_TITLE}  (n={len(df)})\n"
     f"Points colored by Ks multiplier  |  {EVENT_LABEL}",
     fontsize=12
 )
@@ -462,7 +464,7 @@ save_fig(fig, "fig7_pbias_vs_kge.png")
 
 
 # -----------------------------------------------------------------------
-# FIGURE 8: Top-15 runs as formatted table
+# FIGURE 8: Top-15 runs as formatted table (includes psiB_mult column)
 # -----------------------------------------------------------------------
 print("Figure 8: Top-15 table")
 
@@ -471,6 +473,7 @@ top_cols_display = {
     "kinemvelcoef":     "cv",
     "flowexp":          "r",
     "channelroughness": "n",
+    "psiB_mult":        "psiB x",
     "kge":              "KGE",
     "nse":              "NSE",
     "pbias_pct":        "PBIAS %",
@@ -487,6 +490,7 @@ fmt_map = {
     "cv":      "{:.2f}",
     "r":       "{:.3f}",
     "n":       "{:.4f}",
+    "psiB x":  "{:.3f}",
     "KGE":     "{:.3f}",
     "NSE":     "{:.3f}",
     "PBIAS %": "{:+.1f}",
@@ -498,12 +502,12 @@ for col, fmt in fmt_map.items():
     if col in top15.columns:
         top15[col] = top15[col].apply(lambda v: fmt.format(v))
 
-fig, ax = plt.subplots(figsize=(14, 5.5))
+fig, ax = plt.subplots(figsize=(16, 5.5))
 ax.axis("off")
 tbl = ax.table(cellText=top15.values, colLabels=top15.columns,
                cellLoc="center", loc="center")
 tbl.auto_set_font_size(False)
-tbl.set_fontsize(8.5)
+tbl.set_fontsize(8.0)
 tbl.scale(1.0, 1.55)
 
 for j in range(len(top15.columns)):
@@ -515,17 +519,16 @@ for i in range(1, len(top15) + 1):
         tbl[i, j].set_facecolor(bg)
 
 ax.set_title(
-    f"Top 15 runs by KGE — 5-param LHS  {SERIES_TITLE}  (n={len(df)})\n"
+    f"Top 15 runs by KGE — 6-param LHS  {SERIES_TITLE}  (n={len(df)})\n"
     f"{EVENT_LABEL}  |  f fixed at 0.020 mm^-1  |  Green row = best run",
     fontsize=11, pad=12
 )
 fig.tight_layout()
 save_fig(fig, "fig8_top15_table.png")
 
+
 # -----------------------------------------------------------------------
 # FIGURE 9: KGE component decomposition vs Ks
-# 3-panel figure: r, alpha, beta each vs Ks multiplier, colored by KGE.
-# Shows which KGE component is limiting performance and how it responds to Ks.
 # -----------------------------------------------------------------------
 print("Figure 9: KGE component decomposition vs Ks")
 
@@ -534,7 +537,7 @@ kge_alpha_vals = df["kge_alpha"].values
 kge_beta_vals  = df["kge_beta"].values
 
 components = [
-    {"col": kge_r_vals,     "label": "r  (timing correlation)",  "ideal": 1.0, "color": "#2a9d8f"},
+    {"col": kge_r_vals,     "label": "r  (timing correlation)",    "ideal": 1.0, "color": "#2a9d8f"},
     {"col": kge_alpha_vals, "label": "\u03b1  (variability ratio)", "ideal": 1.0, "color": "#e9c46a"},
     {"col": kge_beta_vals,  "label": "\u03b2  (bias ratio)",        "ideal": 1.0, "color": "#e76f51"},
 ]
@@ -545,13 +548,9 @@ for ax, comp in zip(axes, components):
     sc = ax.scatter(ks_vals, comp["col"],
                     c=kge_vals, cmap=KGE_CMAP, norm=KGE_NORM,
                     s=35, edgecolors="white", linewidths=0.4, alpha=0.85, zorder=3)
-
-    # Best run star
     ax.scatter(ks_vals[best_idx], comp["col"][best_idx],
                s=180, marker="*", color="white", edgecolors="black",
                linewidths=1.2, zorder=5, label=f"Best KGE={best_kge:.3f}")
-
-    # Rolling median trend line
     sort_order = np.argsort(ks_vals)
     xs_sorted  = ks_vals[sort_order]
     ys_sorted  = comp["col"][sort_order]
@@ -560,43 +559,115 @@ for ax, comp in zip(axes, components):
                                                min_periods=1).median().values
     ax.plot(xs_sorted, ys_smooth, color="navy", linewidth=1.6,
             linestyle="--", alpha=0.7, label="Rolling median")
-
-    # Ideal value reference line
     ax.axhline(comp["ideal"], color=comp["color"], linewidth=1.2,
                linestyle="-", alpha=0.6, label=f"Ideal = {comp['ideal']:.1f}")
-
     ax.set_xlabel("Ks multiplier", fontsize=10)
     ax.set_ylabel(comp["label"], fontsize=10)
     ax.set_title(comp["label"], fontsize=11)
     ax.legend(fontsize=8, loc="best", facecolor="white", framealpha=0.85)
     ax.grid(alpha=0.25)
 
-# Shared colorbar
 sm = plt.cm.ScalarMappable(cmap=KGE_CMAP, norm=KGE_NORM)
 sm.set_array([])
 fig.colorbar(sm, ax=axes.tolist(), label="KGE", shrink=0.7, pad=0.02)
 
 fig.suptitle(
-    f"KGE component decomposition vs Ks — 5-param LHS  {SERIES_TITLE}  (n={len(df)})\n"
+    f"KGE component decomposition vs Ks — 6-param LHS  {SERIES_TITLE}  (n={len(df)})\n"
     f"{EVENT_LABEL}  |  Dashed = rolling median  |  Colored line = ideal value",
     fontsize=12
 )
 fig.tight_layout()
 save_fig(fig, "fig9_kge_components_vs_ks.png")
 
+
+# -----------------------------------------------------------------------
+# FIGURE 10: psiB_mult deep-dive — 3 panels
+#   (a) KGE vs psiB_mult — 1D response with Ks as color
+#   (b) psiB_mult vs Ks_mult scatter — colored by KGE (interaction map)
+#   (c) PBIAS vs psiB_mult — shows whether PsiB shifts volume bias
+# -----------------------------------------------------------------------
+print("Figure 10: psiB_mult deep-dive (3 panels)")
+
+fig, axes = plt.subplots(1, 3, figsize=(16, 5.5))
+
+# --- Panel (a): KGE vs psiB_mult, colored by Ks ---
+ax = axes[0]
+sc_a = ax.scatter(psib_vals, kge_vals, c=ks_vals, cmap="viridis",
+                  s=35, edgecolors="white", linewidths=0.4, alpha=0.85, zorder=3)
+ax.scatter(psib_vals[best_idx], kge_vals[best_idx],
+           s=180, marker="*", color="white", edgecolors="black",
+           linewidths=1.2, zorder=5, label=f"Best KGE={best_kge:.3f}")
+sort_order = np.argsort(psib_vals)
+xs_s = psib_vals[sort_order]; ys_s = kge_vals[sort_order]
+window   = max(5, len(df) // 8)
+ys_sm    = pd.Series(ys_s).rolling(window, center=True, min_periods=1).median().values
+ax.plot(xs_s, ys_sm, color="navy", linewidth=1.6, linestyle="--", alpha=0.7,
+        label="Rolling median")
+ax.axhline(0, color="gray", linewidth=0.8, linestyle=":", alpha=0.6)
+ax.set_xlabel("psiB multiplier", fontsize=10)
+ax.set_ylabel("KGE", fontsize=10)
+ax.set_title("KGE vs psiB_mult\n(colored by Ks mult)", fontsize=11)
+fig.colorbar(sc_a, ax=ax, label="Ks multiplier", shrink=0.85)
+ax.legend(fontsize=8, loc="lower right", facecolor="white", framealpha=0.85)
+ax.grid(alpha=0.25)
+
+# --- Panel (b): psiB_mult vs Ks_mult, colored by KGE (interaction) ---
+ax = axes[1]
+sc_b = ax.scatter(ks_vals, psib_vals, c=kge_vals, cmap=KGE_CMAP, norm=KGE_NORM,
+                  s=35, edgecolors="white", linewidths=0.4, alpha=0.85, zorder=3)
+ax.scatter(ks_vals[best_idx], psib_vals[best_idx],
+           s=180, marker="*", color="white", edgecolors="black",
+           linewidths=1.2, zorder=5, label=f"Best KGE={best_kge:.3f}")
+ax.set_xlabel("Ks multiplier", fontsize=10)
+ax.set_ylabel("psiB multiplier", fontsize=10)
+ax.set_title("Ks × psiB interaction\n(colored by KGE)", fontsize=11)
+fig.colorbar(sc_b, ax=ax, label="KGE", shrink=0.85)
+ax.legend(fontsize=8, loc="upper right", facecolor="white", framealpha=0.85)
+ax.grid(alpha=0.25)
+
+# --- Panel (c): PBIAS vs psiB_mult, colored by KGE ---
+ax = axes[2]
+sc_c = ax.scatter(psib_vals, pbias_vals, c=kge_vals, cmap=KGE_CMAP, norm=KGE_NORM,
+                  s=35, edgecolors="white", linewidths=0.4, alpha=0.85, zorder=3)
+ax.scatter(psib_vals[best_idx], pbias_vals[best_idx],
+           s=180, marker="*", color="white", edgecolors="black",
+           linewidths=1.2, zorder=5, label=f"Best KGE={best_kge:.3f}")
+ax.axhline(0, color="black", linewidth=0.9, linestyle="--", alpha=0.5,
+           label="PBIAS = 0")
+sort_order = np.argsort(psib_vals)
+xs_s = psib_vals[sort_order]; ys_s = pbias_vals[sort_order]
+ys_sm = pd.Series(ys_s).rolling(window, center=True, min_periods=1).median().values
+ax.plot(xs_s, ys_sm, color="navy", linewidth=1.6, linestyle="--", alpha=0.7,
+        label="Rolling median")
+ax.set_xlabel("psiB multiplier", fontsize=10)
+ax.set_ylabel("PBIAS (%)", fontsize=10)
+ax.set_title("PBIAS vs psiB_mult\n(colored by KGE — does psiB shift volume?)", fontsize=11)
+fig.colorbar(sc_c, ax=ax, label="KGE", shrink=0.85)
+ax.legend(fontsize=8, loc="upper right", facecolor="white", framealpha=0.85)
+ax.grid(alpha=0.25)
+
+fig.suptitle(
+    f"psiB_mult sensitivity deep-dive — 6-param LHS  {SERIES_TITLE}  (n={len(df)})\n"
+    f"{EVENT_LABEL}  |  Baseline PsiB per class: RS=-390, CO=-401, CeD=-183, EbD=-450, Cb=-117 mm",
+    fontsize=11
+)
+fig.tight_layout()
+save_fig(fig, "fig10_psib_sensitivity.png")
+
+
 # -----------------------------------------------------------------------
 # CONSOLE SUMMARY
 # -----------------------------------------------------------------------
-print(f"\n{'='*60}")
+print(f"\n{'='*65}")
 print(f"All figures saved to:\n  {plot_dir}")
 print(f"\nParameter-KGE correlations (Pearson r):")
 for key, label in zip(PARAM_KEYS, PARAM_LABELS):
     r_corr = np.corrcoef(df[key].values, kge_vals)[0, 1]
-    print(f"  {label:<35s}  r = {r_corr:+.3f}")
+    print(f"  {label:<40s}  r = {r_corr:+.3f}")
 print(f"\nTop 5 runs by KGE:")
 top5_cols  = ["run_id", "Ks_mult", "kinemvelcoef", "flowexp",
-              "channelroughness", "kge", "pbias_pct"]
+              "channelroughness", "psiB_mult", "kge", "pbias_pct"]
 top5_avail = [c for c in top5_cols if c in df.columns]
 print(df.sort_values("kge", ascending=False).head(5)[top5_avail]
         .to_string(index=False, float_format="%.4f"))
-print(f"{'='*60}\n")
+print(f"{'='*65}\n")

@@ -32,7 +32,7 @@ import pandas as pd
 from pathlib import Path
 
 import build_sensitivity_run as builder
-import run_sensitivity_single as runner
+import workspaces.SMF_Calibration_pytRIBS.smf_demo.run_sensitivity_single_old as runner
 
 # ------------------------------------------------------------------
 # LHS PARAMETER RANGES

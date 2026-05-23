@@ -7,23 +7,31 @@ then assembles a combined results table.
 
 All parameters accumulate in one CSV — running a new parameter sweep appends
 to (or updates) sensitivity_results_all.csv rather than overwriting it. This
-means you can run Ks_mult, then f_RS_abs, then f_RS_abs_Ks1, and all results
+means you can run Ks_mult, then f_RS_abs, then thetaS_mult, and all results
 are preserved in one place for cross-parameter comparison and plotting.
 
 Usage (run from the smf_demo directory):
-    python run_sensitivity_sweep.py                         # runs all parameters
-    python run_sensitivity_sweep.py --param Ks_mult         # runs one parameter only
-    python run_sensitivity_sweep.py --param flowexp         # runs r sweep at Ks=6.1x     
-    python run_sensitivity_sweep.py --param f_RS_abs_Ks1    # runs f sweep at Ks=1x
-    python run_sensitivity_sweep.py --skip_existing         # skips runs whose CSV already exists
+    python run_sensitivity_sweep.py                              # runs all parameters
+    python run_sensitivity_sweep.py --param Ks_mult             # runs one parameter only
+    python run_sensitivity_sweep.py --param thetaS_mult         # runs thetaS sweep
+    python run_sensitivity_sweep.py --param channelwidthcoeff   # runs channel width sweep
+    python run_sensitivity_sweep.py --param psiB_mult           # runs psiB sweep
+    python run_sensitivity_sweep.py --param As_value            # runs saturated anisotropy sweep
+    python run_sensitivity_sweep.py --param Au_value            # runs unsaturated anisotropy sweep
+    python run_sensitivity_sweep.py --param AsAu_value          # runs combined As=Au sweep
+    python run_sensitivity_sweep.py --skip_existing             # skips runs whose CSV already exists
 
 Output:
     calibration_work/03_comparisons/summary_tables/sensitivity_results_all.csv
 
 Parameter notes:
-    f_RS_abs      — ABSOLUTE f for RS soil only, Ks fixed at best calibrated value (7x)
-    f_RS_abs_Ks1  — ABSOLUTE f for RS soil only, Ks fixed at uncalibrated baseline (1x)
-                    Use to test whether the f response curve shifts with Ks.
+    f_RS_abs         — ABSOLUTE f for RS soil only, Ks fixed at best calibrated value (6.1x)
+    thetaS_mult      — multiplier applied uniformly to all soil class thetaS values
+    channelwidthcoeff— absolute channel width coefficient (hydraulic geometry scaling)
+    psiB_mult        — multiplier applied uniformly to all soil class PsiB values (series 59)
+    As_value         — absolute saturated anisotropy ratio, applied to all soil classes (Au held at 1.0)
+    Au_value         — absolute unsaturated anisotropy ratio, applied to all soil classes (As held at 1.0)
+    AsAu_value       — both As and Au set to the same swept value simultaneously
 """
 
 import argparse
@@ -46,20 +54,12 @@ SWEEP_VALUES = {
         0.1, 0.25, 0.5, 1.0, 2.0, 3.0, 4.0, 6.0, 8.0,
         10.0, 15.0, 20.0, 30.0, 50.0, 100.0
     ],
-    # PREVIOUS RUN - ABSOLUTE f for RS soil only — Ks fixed at 7x (best calibrated)
+    # ABSOLUTE f for RS soil only — Ks fixed at best calibrated value (6.1x)
     "f_RS_abs": [
         0.001, 0.002, 0.005, 0.010, 0.020,
         0.025, 0.030, 0.035, 0.040, 0.050,
         0.060, 0.070, 0.080, 0.090, 0.100,
         0.110, 0.120, 0.150, 0.200, 0.500, 1.000
-    ],
-    # ABSOLUTE f for RS soil only — Ks fixed at 1x (uncalibrated baseline)
-    # Focused range around the transition zone observed in f_RS_abs sweep
-    "f_RS_abs_Ks1": [
-        0.005, 0.010, 0.015, 0.020,
-        0.025, 0.030, 0.035, 0.040,
-        0.050, 0.060, 0.070, 0.080,
-        0.090, 0.100, 0.110,
     ],
     # Absolute values for hillslope velocity coefficient (baseline = 3)
     "kinemvelcoef": [
@@ -69,17 +69,55 @@ SWEEP_VALUES = {
     ],
     # Absolute values for hillslope velocity exponent (baseline = 0.3)
     "flowexp": [
-        0.05, 0.1, 0.15, 0.2, 0.25, 
+        0.05, 0.1, 0.15, 0.2, 0.25,
         0.3, 0.35, 0.4, 0.5, 0.6,
         0.8, 1.0, 1.2, 1.5, 2.0, 3.0
     ],
     # Absolute values for Manning's channel roughness (baseline = 0.04)
     "channelroughness": [
-        0.001, 0.002, 0.003, 0.005, 
-        0.0075, 0.01, 0.015, 0.02, 
-        0.03, 0.04, 0.05, 0.07, 
+        0.001, 0.002, 0.003, 0.005,
+        0.0075, 0.01, 0.015, 0.02,
+        0.03, 0.04, 0.05, 0.07,
         0.10, 0.15, 0.20
-        ],
+    ],
+    # Absolute values for channel width coefficient (baseline = 2.33)
+    # Range spans from very narrow (0.25) through calibrated (2.33) to wide (5.0)
+    "channelwidthcoeff": [
+        0.25, 0.50, 0.75, 1.00, 1.25, 1.50,
+        1.75, 2.00, 2.33, 2.75, 3.25, 4.00, 5.00
+    ],
+    # Multipliers on per-class baseline PsiB (baseline mult = 1.0; series 59)
+    # Range 0.8–1.25 based on single-param sweep: KGE is positive only in this
+    # zone; below 0.8x and above 1.25x model performance degrades sharply.
+    # Applied uniformly across all soil classes (same pattern as thetaS_mult).
+    "psiB_mult": [
+        0.10, 0.20, 0.30, 0.40, 0.50, 0.60,
+        0.70, 0.80, 0.90, 1.00, 1.25, 1.50,
+        2.00, 3.00, 5.00,
+    ],
+    # Multipliers on per-class baseline thetaS (baseline mult = 1.0)
+    # Covers Luke's LHS range (0.38–0.45) and extends slightly beyond
+    "thetaS_mult": [
+        0.85, 0.88, 0.91, 0.94, 0.97,
+        1.00, 1.03, 1.06, 1.09, 1.12, 1.15
+    ],
+    # Absolute saturated anisotropy ratio, all soil classes (baseline = 1.0)
+    # 1.0 = isotropic; higher = stronger lateral saturated flow
+    "As_value": [
+        1.0, 2.0, 5.0, 10.0, 20.0,
+        50.0, 100.0, 200.0, 500.0, 1000.0
+    ],
+    # Absolute unsaturated anisotropy ratio, all soil classes (baseline = 1.0)
+    "Au_value": [
+        1.0, 2.0, 5.0, 10.0, 20.0,
+        50.0, 100.0, 200.0, 500.0, 1000.0
+    ],
+    # Combined sweep: As and Au set to the same value simultaneously (series 66)
+    # Use to test the joint response when both lateral flow pathways are active together.
+    "AsAu_value": [
+        1.0, 2.0, 5.0, 10.0, 20.0,
+        50.0, 100.0, 200.0, 500.0, 1000.0
+    ],
 }
 
 
@@ -159,9 +197,12 @@ def main():
         print(f"    Baseline = {builder.BASELINE[param_name]}")
         if param_name == "f_RS_abs":
             print(f"    Mode: ABSOLUTE f for RS soil only | Ks_mult = {builder.BASELINE['Ks_mult']}x (best calibrated)")
-        
-        elif param_name == "f_RS_abs_Ks1":
-            print(f"    Mode: ABSOLUTE f for RS soil only | Ks_mult = 1x (uncalibrated baseline)")
+        elif param_name == "thetaS_mult":
+            print(f"    Mode: uniform multiplier on per-class thetaS | 1.0 = no change")
+        elif param_name in ("As_value", "Au_value"):
+            print(f"    Mode: absolute value applied to all soil classes | 1.0 = isotropic")
+        elif param_name == "AsAu_value":
+            print(f"    Mode: As AND Au set to the same value | 1.0 = isotropic (series 66)")
         print(f"    Values:   {values}\n")
 
         for value in values:
