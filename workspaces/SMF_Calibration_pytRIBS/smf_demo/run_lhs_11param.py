@@ -121,16 +121,45 @@ def generate_lhs_samples(n, params, seed=None):
 # ------------------------------------------------------------------
 # RUN ID CONSTRUCTION
 # ------------------------------------------------------------------
+def short_label(value, decimals=3):
+    """
+    Compact label for run IDs: round to `decimals` decimal places, strip
+    trailing zeros, replace '.' with 'p'.  Much shorter than value_to_label
+    (which preserves all significant figures) — critical for keeping file
+    paths well under the 255-character filesystem limit when 7 parameters
+    are concatenated.
+
+    Examples (decimals=3):
+        9.093571  ->  '9p094'   (rounds to 9.094, strips trailing zero → 9.094)
+        4.032120  ->  '4p032'
+        0.318423  ->  '0p318'
+        0.026600  ->  '0p027'   (rounds to 0.027)
+        1.818515  ->  '1p819'
+        1.102236  ->  '1p102'
+        1.189755  ->  '1p19'    (trailing zero stripped)
+    """
+    rounded = round(value, decimals)
+    s = f"{rounded:.{decimals}f}".rstrip('0')
+    if s.endswith('.'):
+        s += '0'           # keep at least one decimal digit: "9." -> "9.0"
+    return s.replace('.', 'p')
+
+
 def build_lhs_run_id(ks_mult, kinemvelcoef, flowexp, channelroughness,
                      channelwidthcoeff, thetas_mult, psib_mult):
-    """Build a compact, human-readable run ID for a 7-parameter LHS point."""
-    ks_lbl   = builder.value_to_label(ks_mult)
-    cv_lbl   = builder.value_to_label(kinemvelcoef)
-    r_lbl    = builder.value_to_label(flowexp)
-    n_lbl    = builder.value_to_label(channelroughness)
-    cw_lbl   = builder.value_to_label(channelwidthcoeff)
-    ths_lbl  = builder.value_to_label(thetas_mult)
-    psib_lbl = builder.value_to_label(psib_mult)
+    """
+    Build a compact, human-readable run ID for a 7-parameter LHS point.
+    Uses short_label() (3 decimal places) instead of builder.value_to_label()
+    to keep total path lengths well under filesystem limits (~65 chars for the
+    change_tested portion vs ~95 chars with full-precision labels).
+    """
+    ks_lbl   = short_label(ks_mult)
+    cv_lbl   = short_label(kinemvelcoef)
+    r_lbl    = short_label(flowexp)
+    n_lbl    = short_label(channelroughness)
+    cw_lbl   = short_label(channelwidthcoeff)
+    ths_lbl  = short_label(thetas_mult)
+    psib_lbl = short_label(psib_mult)
     change_tested = (
         f"Ks{ks_lbl}x_cv{cv_lbl}_r{r_lbl}_n{n_lbl}"
         f"_cw{cw_lbl}_thS{ths_lbl}x_psiB{psib_lbl}x"
