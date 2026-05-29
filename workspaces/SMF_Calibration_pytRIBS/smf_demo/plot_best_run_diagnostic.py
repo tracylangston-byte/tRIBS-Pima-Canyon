@@ -35,8 +35,8 @@ from pathlib import Path
 # =======================================================================
 # CONFIG — change RESULTS_CSV to switch series
 # =======================================================================
-RESULTS_CSV  = "lhs_results_5param_KsHi.csv"
-SERIES_TITLE = "Series 81  |  Ks 7.5-12x"
+RESULTS_CSV  = "lhs_results_11param_83.csv"
+SERIES_TITLE = "Series 83  |  11 param run"
 # =======================================================================
 
 EVENT_LABEL      = "SMF Aug 12, 2014"

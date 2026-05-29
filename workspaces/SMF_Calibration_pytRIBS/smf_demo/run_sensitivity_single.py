@@ -85,15 +85,17 @@ def run_and_score():
     strmflw_sim_raw = results.get_qout_results()
 
     # ------------------------------------------------------------------
-    # Load observed discharge
+    # Load synthetic truth discharge (replaces real gauge for inversion)
     # ------------------------------------------------------------------
-    obs_filepath = '../smf_init_data/met/SMF_Observations_1993-2025.xlsx'
-    obs_df = pd.read_excel(obs_filepath, sheet_name='Discharge', skiprows=6)
-    obs_df['datetime'] = pd.to_datetime(
-        obs_df['Date'].astype(str) + ' ' + obs_df['Time'].astype(str)
-    )
-    obs_df.set_index('datetime', inplace=True)
-    obs_df['Observed_CMS'] = obs_df['cfs'] * 0.0283168
+    synth_path = (project_root / "calibration_work" / "synth_truth" /
+                  "synth_truth_Ks8p5_cv5p75_r0p23_n0p02.qout")
+    obs_raw = pd.read_csv(synth_path, sep=r'\s+', skiprows=1,
+                          names=['Time_hr', 'Qstrm_m3s', 'Hlev_m'])
+    obs_raw['datetime'] = pd.to_datetime(obs_raw['Time_hr'] * 3600, unit='s',
+                          origin=pd.Timestamp('2014-08-01'))
+    obs_raw.set_index('datetime', inplace=True)
+    obs_raw['Observed_CMS'] = obs_raw['Qstrm_m3s']
+    obs_df = obs_raw
 
     # ------------------------------------------------------------------
     # Align simulated and observed to 5-minute intervals
@@ -102,7 +104,7 @@ def run_and_score():
     strmflw_sim['Time'] = pd.to_datetime(strmflw_sim['Time'])
     strmflw_sim.set_index('Time', inplace=True)
 
-    obs_resampled = obs_df['Observed_CMS'].resample('5min').mean()
+    obs_resampled = obs_df['Observed_CMS'].resample('5min').interpolate(method='time')
     sim_resampled = strmflw_sim['Qstrm_m3s'].resample('5min').mean()
 
     compare_df = pd.DataFrame({

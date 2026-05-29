@@ -1,61 +1,42 @@
 """
-run_lhs_11param.py
-==================
-Runs a Latin Hypercube Sampling sweep across 8 free parameters, with f_RS_abs,
-As, Au, and AsAu held fixed at their baseline/calibrated values.
+run_lhs_5param.py
+=================
+Runs a Latin Hypercube Sampling sweep across four routing/soil parameters,
+with f_RS_abs held fixed at the calibrated baseline value (0.020 mm⁻¹).
 
-Parameters swept (8 free dimensions):
-    Ks_mult:          7.5  –  9.5    (multiplier on per-class baseline Ks)
-    kinemvelcoef:     2.5  –  6.5    (hillslope kinematic wave velocity coefficient cv)
-    flowexp:          0.20 –  0.35   (hillslope velocity exponent r)
-    channelroughness: 0.02 –  0.03   (Manning's n for channel routing)
-    channelwidthcoeff:1.8  –  2.5    (channel width coefficient αB)
-    thetaS_mult:      0.85 –  1.15   (multiplier on per-class baseline thetaS)
-    psiB_mult:        0.80 –  1.25   (multiplier on per-class baseline PsiB)
+I RECOMMEND TO MAKE SURE YOU KNOW WHAT AND WHERE THIS IS SAVING SO YOU DON'T OVERWRITE THE PREVIOUS RUN'S SUMMARY TABLES
+
+Parameters swept (4 free dimensions):
+    Ks_mult:          7.5 – 12.0  (extended upward from series 80; best run was at 7.88×,
+                                   right at the top of the old range, and PBIAS was still
+                                   +15% — pushing higher to find volume balance)
+    kinemvelcoef:     2.0 – 6.0   (hillslope kinematic wave velocity coefficient)
+    flowexp:          0.25 – 0.35  (hillslope velocity exponent r)
+    channelroughness: 0.008 – 0.020 (Manning's n for channel routing)
 
 Fixed (not swept):
-    f_RS_abs:   0.020 mm⁻¹   (RS soil conductivity decay — pinned from series 61/81/82)
-    As_value:   1.0           (anisotropy — fixed, per project spec)
-    Au_value:   1.0           (anisotropy — fixed, per project spec)
-    AsAu_value: 1.0           (combined anisotropy — fixed, per project spec)
+    f_RS_abs:         0.020 mm⁻¹  (RS soil conductivity decay — pinned at calibrated best)
 
-NOTE on naming: this script is called "11param" because the project spec listed
-11 parameters to explore; 3 of those (As, Au, AsAu) are fixed at 1.0 for this
-initial run, leaving 8 free LHS dimensions.  The series label "83" follows the
-existing series numbering (82 = 6-param psiB sweep).
-
-Series: 83
-Output: calibration_work/03_comparisons/summary_tables/lhs_results_11param_83.csv
+Series: 90  (Sythetic Run)
+Output: calibration_work/03_comparisons/summary_tables/lhs_results_synth_4param_90.csv
 
 Usage (run from the smf_demo directory):
-    python run_lhs_11param.py                    # 100 samples, seed=42
-    python run_lhs_11param.py --n 200            # more samples
-    python run_lhs_11param.py --seed 99          # different random seed
-    python run_lhs_11param.py --skip_existing    # resume interrupted run
+    python run_lhs_5param.py                    # 50 samples, seed=42
+    python run_lhs_5param.py --n 100            # more samples
+    python run_lhs_5param.py --seed 99          # different random seed
+    python run_lhs_5param.py --skip_existing    # resume interrupted run
 
 Design notes:
-    - Ks_mult range (7.5–9.5×) centres on the best-performing zone identified in
-      series 80/81 (peak KGE at 7–8×) while narrowing compared with series 82
-      (7.5–12×), reflecting the sharply-degrading performance above 9.5×.
-    - kinemvelcoef (cv) range (2.5–6.5) covers the viable zone from series 81/82
-      contour plots, where cv shows near-zero correlation with KGE for fixed Ks
-      in the good zone — kept wide to confirm this finding at all new Ks values.
-    - flowexp (r) range (0.20–0.35) brackets the calibrated value of 0.30 from
-      Hüner (2025; r=0.4 literature value) and series 82 bounds.
-    - channelroughness (n) range (0.02–0.03) is tighter than series 82
-      (0.008–0.020); narrowed toward the low end where PBIAS is closest to zero.
-    - channelwidthcoeff (αB): NEW parameter in this sweep. Baseline is 2.33
-      (Ivanov 2004 / Luke's original model). Range 1.8–2.5 spans physically
-      plausible values for a small semi-arid fan watershed.
-    - thetaS_mult: NEW parameter in this sweep. Range 0.85–1.15 is consistent
-      with the single-parameter sweep (series 67) and Hüner (2025) finding of
-      significant effect on major peaks in wet periods.
-    - psiB_mult: carried over from series 82 (0.80–1.25×), range where KGE
-      remains positive in single-param sweep (series 59).
-    - f_RS_abs fixed at 0.020 mm⁻¹ (pinned from series 61/81/82).
-    - As, Au, AsAu fixed at 1.0 per project specification for this initial run.
-    - Results saved incrementally — sweep can be safely interrupted and resumed
-      with --skip_existing.
+    - Series 81 is a focused refinement of series 80. The series 80 best run sat
+      at Ks=7.88x (top of that range) with PBIAS=+15%, indicating the volume
+      balance optimum lies above 8x. This sweep finds it.
+    - Routing parameters (cv, r, n) retain the same ranges as series 80 — their
+      correlations with KGE were near zero in series 80, confirming they are
+      already well-constrained by prior manual calibration.
+    - f_RS_abs is fixed because series 61 and the Ks x f LHS (series 70s) already
+      characterised that dimension.
+    - Results are saved incrementally so the sweep can be safely interrupted
+      and resumed with --skip_existing.
 """
 
 import argparse
@@ -69,30 +50,24 @@ from pathlib import Path
 
 import build_sensitivity_run as builder
 import run_sensitivity_single as runner
-
 from pytRIBS.classes import Project, Soil, Land, Met, Model
 
 # ------------------------------------------------------------------
 # LHS PARAMETER RANGES  — edit here to adjust the search space
 # ------------------------------------------------------------------
 LHS_PARAMS = {
-    "Ks_mult":           {"lo": 7.5,  "hi": 9.5},    # narrowed from series 82 (7.5-12)
-    "kinemvelcoef":      {"lo": 2.5,  "hi": 6.5},    # cv; same order as series 82
-    "flowexp":           {"lo": 0.20, "hi": 0.35},   # r
-    "channelroughness":  {"lo": 0.02, "hi": 0.03},   # Manning's n; tightened from series 82
-    "channelwidthcoeff": {"lo": 1.8,  "hi": 2.5},    # αB; NEW
-    "thetaS_mult":       {"lo": 0.93, "hi": 1.15},   # lower bound raised: thetaS must stay > theta*_s=0.37 (land cover class 1); RS baseline thetaS=0.40, so min mult = 0.37/0.40 = 0.925
-    "psiB_mult":         {"lo": 0.80, "hi": 1.25},   # carried from series 82
+    "Ks_mult":          {"lo": 7.5,   "hi": 9.5},   # same as series 83 run
+    "kinemvelcoef":     {"lo": 2.5,   "hi": 6.5},
+    "flowexp":          {"lo": 0.20,  "hi": 0.35},
+    "channelroughness": {"lo": 0.02,  "hi": 0.04},
 }
 
-# Fixed parameters — not included in LHS_PARAMS
-F_RS_ABS_FIXED  = 0.020   # mm^-1 — RS soil conductivity decay
-AS_FIXED        = 1.0     # anisotropy (saturated zone)
-AU_FIXED        = 1.0     # anisotropy (unsaturated zone)
+# f_RS_abs is fixed — not included in LHS_PARAMS
+F_RS_ABS_FIXED = 0.020  # mm^-1
 
-# Series and category labels
-LHS_SERIES   = "83"
-LHS_CATEGORY = "83_lhs_11param"
+# Series number — 81 for high-Ks refinement sweep
+LHS_SERIES = "90"
+LHS_CATEGORY = "90_lhs_synth_inversion"
 
 
 # ------------------------------------------------------------------
@@ -121,49 +96,13 @@ def generate_lhs_samples(n, params, seed=None):
 # ------------------------------------------------------------------
 # RUN ID CONSTRUCTION
 # ------------------------------------------------------------------
-def short_label(value, decimals=2):
-    """
-    Compact label for run IDs: round to `decimals` decimal places, strip
-    trailing zeros, replace '.' with 'p'.  Much shorter than value_to_label
-    (which preserves all significant figures) — critical for keeping file
-    paths well under the 255-character filesystem limit when 7 parameters
-    are concatenated.
-
-    Examples (decimals=3):
-        9.093571  ->  '9p094'   (rounds to 9.094, strips trailing zero → 9.094)
-        4.032120  ->  '4p032'
-        0.318423  ->  '0p318'
-        0.026600  ->  '0p027'   (rounds to 0.027)
-        1.818515  ->  '1p819'
-        1.102236  ->  '1p102'
-        1.189755  ->  '1p19'    (trailing zero stripped)
-    """
-    rounded = round(value, decimals)
-    s = f"{rounded:.{decimals}f}".rstrip('0')
-    if s.endswith('.'):
-        s += '0'           # keep at least one decimal digit: "9." -> "9.0"
-    return s.replace('.', 'p')
-
-
-def build_lhs_run_id(ks_mult, kinemvelcoef, flowexp, channelroughness,
-                     channelwidthcoeff, thetas_mult, psib_mult):
-    """
-    Build a compact, human-readable run ID for a 7-parameter LHS point.
-    Uses short_label() (3 decimal places) instead of builder.value_to_label()
-    to keep total path lengths well under filesystem limits (~65 chars for the
-    change_tested portion vs ~95 chars with full-precision labels).
-    """
-    ks_lbl   = short_label(ks_mult)
-    cv_lbl   = short_label(kinemvelcoef)
-    r_lbl    = short_label(flowexp)
-    n_lbl    = short_label(channelroughness)
-    cw_lbl   = short_label(channelwidthcoeff)
-    ths_lbl  = short_label(thetas_mult)
-    psib_lbl = short_label(psib_mult)
-    change_tested = (
-        f"Ks{ks_lbl}x_cv{cv_lbl}_r{r_lbl}_n{n_lbl}"
-        f"_cw{cw_lbl}_thS{ths_lbl}x_psiB{psib_lbl}x"
-    )
+def build_lhs_run_id(ks_mult, kinemvelcoef, flowexp, channelroughness):
+    """Build a compact, human-readable run ID for a 4-parameter LHS point."""
+    ks_lbl  = builder.value_to_label(ks_mult)
+    cv_lbl  = builder.value_to_label(kinemvelcoef)
+    r_lbl   = builder.value_to_label(flowexp)
+    n_lbl   = builder.value_to_label(channelroughness)
+    change_tested = f"Ks{ks_lbl}x_cv{cv_lbl}_r{r_lbl}_n{n_lbl}"
     run_id = f"{builder.LOCATION}_{builder.EVENT_DATE}_{LHS_SERIES}_{change_tested}"
     return run_id, change_tested
 
@@ -191,23 +130,18 @@ def load_existing_results(out_path):
 # ------------------------------------------------------------------
 # BUILD + RUN ONE LHS POINT
 # ------------------------------------------------------------------
-def build_and_run_lhs(ks_mult, kinemvelcoef, flowexp, channelroughness,
-                      channelwidthcoeff, thetas_mult, psib_mult):
+def build_and_run_lhs(ks_mult, kinemvelcoef, flowexp, channelroughness):
     """
-    Build one tRIBS input file for a 7-parameter (series 83) LHS point and run it.
+    Build one tRIBS input file for a 4-parameter LHS point and run it.
 
-    Patches builder.BASELINE temporarily so all swept parameters are applied:
-      - Ks_mult, kinemvelcoef, flowexp, channelroughness, channelwidthcoeff swept
-      - thetaS_mult applied as multiplier on per-class baseline thetaS
-      - psiB_mult applied as multiplier on per-class baseline PsiB
-      - f_RS_abs pinned at F_RS_ABS_FIXED for the RS soil class (ID '1')
-      - As, Au fixed at AS_FIXED, AU_FIXED
+    Patches builder.BASELINE temporarily so all four swept parameters
+    are applied correctly; f_RS_abs is pinned at F_RS_ABS_FIXED for all
+    soil classes that use it (RS soil, ID '1').
 
     Returns a metrics dict from run_sensitivity_single.run_and_score().
     """
     run_id, change_tested = build_lhs_run_id(
-        ks_mult, kinemvelcoef, flowexp, channelroughness,
-        channelwidthcoeff, thetas_mult, psib_mult)
+        ks_mult, kinemvelcoef, flowexp, channelroughness)
 
     notebook_dir = Path.cwd()
     project_root = notebook_dir.parent if notebook_dir.name == "smf_demo" else notebook_dir
@@ -225,14 +159,10 @@ def build_and_run_lhs(ks_mult, kinemvelcoef, flowexp, channelroughness,
         folder.mkdir(parents=True, exist_ok=True)
 
     original_baseline = builder.BASELINE.copy()
-    builder.BASELINE["Ks_mult"]           = ks_mult
-    builder.BASELINE["kinemvelcoef"]      = kinemvelcoef
-    builder.BASELINE["flowexp"]           = flowexp
-    builder.BASELINE["channelroughness"]  = channelroughness
-    builder.BASELINE["channelwidthcoeff"] = channelwidthcoeff
-    builder.BASELINE["As_value"]          = AS_FIXED
-    builder.BASELINE["Au_value"]          = AU_FIXED
-    # thetaS_mult and psiB_mult are NOT stored in BASELINE — applied directly below
+    builder.BASELINE["Ks_mult"]          = ks_mult
+    builder.BASELINE["kinemvelcoef"]     = kinemvelcoef
+    builder.BASELINE["flowexp"]          = flowexp
+    builder.BASELINE["channelroughness"] = channelroughness
 
     try:
         b    = builder.BASELINE
@@ -263,28 +193,24 @@ def build_and_run_lhs(ks_mult, kinemvelcoef, flowexp, channelroughness,
         soil_table = soil.read_soil_table(textures=True)
 
         for cls in soil_table:
-            cls['As'] = AS_FIXED
-            cls['Au'] = AU_FIXED
+            cls['As'] = b["As_value"]
+            cls['Au'] = b["Au_value"]
             cls['ks'] = 0.7
             cls['Cs'] = 1.4e6
             cid = str(cls['ID'])
             if cid in builder.SOIL_PARAM_LOOKUP:
                 sp = builder.SOIL_PARAM_LOOKUP[cid]
-                cls['Ks']   = sp['Ks'] * ks_mult
-                cls['m']    = sp['m']
-                cls['n']    = sp['n']
+                cls['Ks']     = sp['Ks'] * ks_mult
+                cls['thetaS'] = sp['thetaS']
                 cls['thetaR'] = sp['thetaR']
-                # thetaS: apply multiplier; guard against thetaS <= thetaR
-                raw_thetaS  = sp['thetaS'] * thetas_mult
-                cls['thetaS'] = max(raw_thetaS, sp['thetaR'] + 0.01)
-                # PsiB: apply multiplier to per-class baseline
-                cls['PsiB'] = sp['PsiB'] * psib_mult
-                # f: RS soil (ID '1') pinned at F_RS_ABS_FIXED; all others use baseline
+                cls['m']      = sp['m']
+                cls['PsiB']   = sp['PsiB']
+                cls['n']      = sp['n']
                 cls['f'] = F_RS_ABS_FIXED if cid == '1' else sp['f']
             else:
                 print(f"  WARNING: Soil ID {cid} not in lookup; using fallback defaults.")
                 cls['Ks'] = 10.0; cls['thetaS'] = 0.4; cls['thetaR'] = 0.05
-                cls['m']  = 0.2;  cls['PsiB']   = -200; cls['f']    = 0.001; cls['n'] = 0.4
+                cls['m'] = 0.2; cls['PsiB'] = -200; cls['f'] = 0.001; cls['n'] = 0.4
 
         working_soil_table    = Path("data/model/soil/soil.sdt")
         soil.write_soil_table(soil_table, str(working_soil_table), textures=True)
@@ -326,7 +252,7 @@ def build_and_run_lhs(ks_mult, kinemvelcoef, flowexp, channelroughness,
         model.kinemvelcoef['value']      = kinemvelcoef
         model.flowexp['value']           = flowexp
         model.channelroughness['value']  = channelroughness
-        model.channelwidthcoeff['value'] = channelwidthcoeff   # swept (not BASELINE default)
+        model.channelwidthcoeff['value'] = b["channelwidthcoeff"]
 
         model.startdate['value']        = builder.START_DATE
         model.runtime['value']          = builder.RUNTIME_HOURS
@@ -351,11 +277,8 @@ def build_and_run_lhs(ks_mult, kinemvelcoef, flowexp, channelroughness,
         model.write_input_file(input_file)
 
         print(f"  Ks={ks_mult:.3f}x  cv={kinemvelcoef:.3f}  r={flowexp:.3f}  "
-              f"n={channelroughness:.4f}  cw={channelwidthcoeff:.3f}  "
-              f"thS={thetas_mult:.3f}x  psiB={psib_mult:.3f}x")
-        print(f"  (RS Ks={builder.SOIL_PARAM_LOOKUP['1']['Ks'] * ks_mult:.2f} mm/hr  "
-              f"RS PsiB={builder.SOIL_PARAM_LOOKUP['1']['PsiB'] * psib_mult:.0f} mm  "
-              f"RS thetaS={builder.SOIL_PARAM_LOOKUP['1']['thetaS'] * thetas_mult:.3f})")
+              f"n={channelroughness:.4f}  "
+              f"(RS Ks={builder.SOIL_PARAM_LOOKUP['1']['Ks'] * ks_mult:.2f} mm/hr)")
 
         run_config = {
             "location":                  builder.LOCATION,
@@ -371,24 +294,22 @@ def build_and_run_lhs(ks_mult, kinemvelcoef, flowexp, channelroughness,
             "event_end":                 builder.EVENT_END,
             "Ks_mult":                   ks_mult,
             "f_RS_abs":                  F_RS_ABS_FIXED,
-            "thetaS_mult":               thetas_mult,
-            "psiB_mult":                 psib_mult,
-            "As_value":                  AS_FIXED,
-            "Au_value":                  AU_FIXED,
+            "As_value":                  b["As_value"],
+            "Au_value":                  b["Au_value"],
             "optpercolation":            b["optpercolation"],
             "channelconductivity_mmhr":  b["channelconductivity_mmhr"],
             "channelporosity":           b["channelporosity"],
             "kinemvelcoef":              kinemvelcoef,
             "flowexp":                   flowexp,
             "channelroughness":          channelroughness,
-            "channelwidthcoeff":         channelwidthcoeff,
+            "channelwidthcoeff":         b["channelwidthcoeff"],
             "input_file":                input_file,
             "log_file":                  log_file,
             "output_prefix":             output_prefix,
             "csv_export_dir":            os.path.relpath(csv_export_dir,      notebook_dir),
             "plot_export_dir":           os.path.relpath(plot_export_dir,     notebook_dir),
             "summary_export_dir":        os.path.relpath(summary_export_dir,  notebook_dir),
-            "swept_param":               "lhs_11param",
+            "swept_param":               "lhs_5param",
             "swept_value":               ks_mult,
         }
 
@@ -400,17 +321,12 @@ def build_and_run_lhs(ks_mult, kinemvelcoef, flowexp, channelroughness,
 
     metrics = runner.run_and_score()
 
-    metrics["Ks_mult"]           = ks_mult
-    metrics["kinemvelcoef"]      = kinemvelcoef
-    metrics["flowexp"]           = flowexp
-    metrics["channelroughness"]  = channelroughness
-    metrics["channelwidthcoeff"] = channelwidthcoeff
-    metrics["thetaS_mult"]       = thetas_mult
-    metrics["psiB_mult"]         = psib_mult
-    metrics["f_RS_abs"]          = F_RS_ABS_FIXED
-    metrics["As_value"]          = AS_FIXED
-    metrics["Au_value"]          = AU_FIXED
-    metrics["swept_param"]       = "lhs_11param"
+    metrics["Ks_mult"]          = ks_mult
+    metrics["kinemvelcoef"]     = kinemvelcoef
+    metrics["flowexp"]          = flowexp
+    metrics["channelroughness"] = channelroughness
+    metrics["f_RS_abs"]         = F_RS_ABS_FIXED
+    metrics["swept_param"]      = "lhs_5param"
 
     return metrics
 
@@ -420,13 +336,9 @@ def build_and_run_lhs(ks_mult, kinemvelcoef, flowexp, channelroughness,
 # ------------------------------------------------------------------
 def main():
     parser = argparse.ArgumentParser(
-        description=(
-            "11-parameter LHS sweep series 83: Ks, cv, r, n, channelwidth, "
-            "thetaS_mult, psiB_mult swept; f, As, Au fixed."
-        )
-    )
-    parser.add_argument("--n", type=int, default=100,
-                        help="Number of LHS samples (default: 100)")
+        description="5-parameter LHS sweep series 81: Ks 7.5-12x (high-Ks refinement).")
+    parser.add_argument("--n", type=int, default=50,
+                        help="Number of LHS samples (default: 50)")
     parser.add_argument("--seed", type=int, default=42,
                         help="Random seed for reproducibility (default: 42)")
     parser.add_argument("--skip_existing", action="store_true",
@@ -438,23 +350,18 @@ def main():
     calib_dir    = project_root / "calibration_work"
     summary_dir  = calib_dir / "03_comparisons" / "summary_tables"
     summary_dir.mkdir(parents=True, exist_ok=True)
-    out_path = summary_dir / "lhs_results_11param_83.csv"
-
+    out_path = summary_dir / "lhs_results_synth_4param_90.csv"
     samples = generate_lhs_samples(args.n, LHS_PARAMS, seed=args.seed)
 
-    print(f"\n{'='*75}")
-    print(f"LHS sweep — series {LHS_SERIES} — 7 free parameters  ({args.n} samples, seed={args.seed})")
-    print(f"  Ks_mult:           {LHS_PARAMS['Ks_mult']['lo']:.1f}  – {LHS_PARAMS['Ks_mult']['hi']:.1f}x")
-    print(f"  kinemvelcoef (cv): {LHS_PARAMS['kinemvelcoef']['lo']:.1f}  – {LHS_PARAMS['kinemvelcoef']['hi']:.1f}")
-    print(f"  flowexp (r):       {LHS_PARAMS['flowexp']['lo']:.2f} – {LHS_PARAMS['flowexp']['hi']:.2f}")
-    print(f"  channelroughness:  {LHS_PARAMS['channelroughness']['lo']:.3f} – {LHS_PARAMS['channelroughness']['hi']:.3f}")
-    print(f"  channelwidthcoeff: {LHS_PARAMS['channelwidthcoeff']['lo']:.1f}  – {LHS_PARAMS['channelwidthcoeff']['hi']:.1f}  [NEW vs series 82]")
-    print(f"  thetaS_mult:       {LHS_PARAMS['thetaS_mult']['lo']:.2f} – {LHS_PARAMS['thetaS_mult']['hi']:.2f}x  [lo=0.93: constrained by theta*_s=0.37 in land cover class 1]")
-    print(f"  psiB_mult:         {LHS_PARAMS['psiB_mult']['lo']:.2f} – {LHS_PARAMS['psiB_mult']['hi']:.2f}x")
-    print(f"  f_RS_abs:          {F_RS_ABS_FIXED} mm^-1  [FIXED]")
-    print(f"  As / Au / AsAu:    {AS_FIXED} / {AU_FIXED} / 1.0  [FIXED]")
+    print(f"\n{'='*65}")
+    print(f"LHS sweep — series {LHS_SERIES} — 4 free parameters  ({args.n} samples, seed={args.seed})")
+    print(f"  Ks_mult:          {LHS_PARAMS['Ks_mult']['lo']:.1f} - {LHS_PARAMS['Ks_mult']['hi']:.1f}x  [true = 8.5]")
+    print(f"  kinemvelcoef:     {LHS_PARAMS['kinemvelcoef']['lo']:.1f} - {LHS_PARAMS['kinemvelcoef']['hi']:.1f}  [true = 5.75]")
+    print(f"  flowexp:          {LHS_PARAMS['flowexp']['lo']:.2f} - {LHS_PARAMS['flowexp']['hi']:.2f}  [true = 0.23]")
+    print(f"  channelroughness: {LHS_PARAMS['channelroughness']['lo']:.3f} - {LHS_PARAMS['channelroughness']['hi']:.3f}  [true = 0.02]")
+    print(f"  f_RS_abs:         {F_RS_ABS_FIXED} mm^-1  [FIXED]")
     print(f"  Output: {out_path.name}")
-    print(f"{'='*75}\n")
+    print(f"{'='*65}\n")
 
     existing_df      = load_existing_results(out_path)
     existing_run_ids = set(existing_df["run_id"].values) if not existing_df.empty else set()
@@ -469,22 +376,15 @@ def main():
     sweep_start = time.time()
 
     for i, row in samples.iterrows():
-        ks_mult           = row["Ks_mult"]
-        kinemvelcoef      = row["kinemvelcoef"]
-        flowexp           = row["flowexp"]
-        channelroughness  = row["channelroughness"]
-        channelwidthcoeff = row["channelwidthcoeff"]
-        thetas_mult       = row["thetaS_mult"]
-        psib_mult         = row["psiB_mult"]
+        ks_mult          = row["Ks_mult"]
+        kinemvelcoef     = row["kinemvelcoef"]
+        flowexp          = row["flowexp"]
+        channelroughness = row["channelroughness"]
 
-        run_id, _ = build_lhs_run_id(
-            ks_mult, kinemvelcoef, flowexp, channelroughness,
-            channelwidthcoeff, thetas_mult, psib_mult)
+        run_id, _ = build_lhs_run_id(ks_mult, kinemvelcoef, flowexp, channelroughness)
 
-        print(f"\n[{i+1:>3}/{args.n}]  "
-              f"Ks={ks_mult:.3f}x  cv={kinemvelcoef:.3f}  r={flowexp:.3f}  "
-              f"n={channelroughness:.4f}  cw={channelwidthcoeff:.3f}  "
-              f"thS={thetas_mult:.3f}x  psiB={psib_mult:.3f}x")
+        print(f"\n[{i+1:>3}/{args.n}]  Ks={ks_mult:.3f}x  cv={kinemvelcoef:.3f}  "
+              f"r={flowexp:.3f}  n={channelroughness:.4f}")
         print(f"         -> {run_id}")
 
         if args.skip_existing and csv_already_exists(run_id, calib_dir):
@@ -495,16 +395,11 @@ def main():
                 try:
                     df_m = pd.read_csv(metrics_file)
                     m = df_m.iloc[0].to_dict()
-                    m["Ks_mult"]           = ks_mult
-                    m["kinemvelcoef"]      = kinemvelcoef
-                    m["flowexp"]           = flowexp
-                    m["channelroughness"]  = channelroughness
-                    m["channelwidthcoeff"] = channelwidthcoeff
-                    m["thetaS_mult"]       = thetas_mult
-                    m["psiB_mult"]         = psib_mult
-                    m["f_RS_abs"]          = F_RS_ABS_FIXED
-                    m["As_value"]          = AS_FIXED
-                    m["Au_value"]          = AU_FIXED
+                    m["Ks_mult"]          = ks_mult
+                    m["kinemvelcoef"]     = kinemvelcoef
+                    m["flowexp"]          = flowexp
+                    m["channelroughness"] = channelroughness
+                    m["f_RS_abs"]         = F_RS_ABS_FIXED
                     all_results.append(m)
                 except Exception:
                     pass
@@ -512,9 +407,7 @@ def main():
 
         t0 = time.time()
         try:
-            metrics = build_and_run_lhs(
-                ks_mult, kinemvelcoef, flowexp, channelroughness,
-                channelwidthcoeff, thetas_mult, psib_mult)
+            metrics = build_and_run_lhs(ks_mult, kinemvelcoef, flowexp, channelroughness)
             all_results = [r for r in all_results if r.get("run_id") != run_id]
             all_results.append(metrics)
             completed += 1
@@ -535,9 +428,9 @@ def main():
         if all_results:
             pd.DataFrame(all_results).to_csv(out_path, index=False)
 
-    print(f"\n{'='*75}")
+    print(f"\n{'='*65}")
     print(f"Sweep complete:  {completed} ran,  {skipped} skipped,  {failed} failed")
-    print(f"{'='*75}\n")
+    print(f"{'='*65}\n")
 
     if all_results:
         final_df = pd.DataFrame(all_results).sort_values("kge", ascending=False)
@@ -552,18 +445,15 @@ def main():
 
         print(f"\n  Top 10 runs by KGE:")
         cols = ["run_id", "Ks_mult", "kinemvelcoef", "flowexp",
-                "channelroughness", "channelwidthcoeff", "thetaS_mult",
-                "psiB_mult", "kge", "nse", "pbias_pct", "peak_timing_error_hr"]
+                "channelroughness", "kge", "nse", "pbias_pct", "peak_timing_error_hr"]
         available = [c for c in cols if c in final_df.columns]
         print(final_df[available].head(10).to_string(index=False, float_format="%.4f"))
 
         print(f"\n  Parameter-KGE correlations (Pearson r):")
-        swept = ["Ks_mult", "kinemvelcoef", "flowexp", "channelroughness",
-                 "channelwidthcoeff", "thetaS_mult", "psiB_mult"]
-        for param in swept:
+        for param in ["Ks_mult", "kinemvelcoef", "flowexp", "channelroughness"]:
             if param in final_df.columns and "kge" in final_df.columns:
                 r = final_df[param].corr(final_df["kge"])
-                print(f"    {param:<22s}  r = {r:+.3f}")
+                print(f"    {param:<20s}  r = {r:+.3f}")
     else:
         print("No results to save.")
 
