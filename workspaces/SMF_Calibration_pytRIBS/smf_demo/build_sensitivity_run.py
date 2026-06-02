@@ -69,7 +69,7 @@ from pathlib import Path
 # Update previously calibrated parameters here before each new sweep.
 # -----------------------------------------------------------------------
 BASELINE = {
-    "Ks_mult":           6.1,    # baseline
+    "Ks_mult":           6.1,    # baseline 6.1
     "f_RS_abs":          0.020,  # absolute f for RS soil (1/mm)
     "As_value":          1.0,
     "Au_value":          1.0,
@@ -79,9 +79,9 @@ BASELINE = {
     "optpercolation":    0,
     "channelconductivity_mmhr": 70,
     "channelporosity":   0.4,
-    "kinemvelcoef":      3.0,   # baseline
-    "flowexp":           0.3,    # baseline
-    "channelroughness":  0.04,   # baseline
+    "kinemvelcoef":      3.0,   # baseline 3
+    "flowexp":           0.2,    # baseline 0.3
+    "channelroughness":  0.04,   # baseline 0.04
     "channelwidthcoeff": 2.33,
 }
 
