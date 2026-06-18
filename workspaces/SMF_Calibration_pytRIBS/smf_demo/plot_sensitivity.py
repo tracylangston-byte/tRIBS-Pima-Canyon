@@ -217,8 +217,8 @@ def main():
     # -----------------------------------------------------------------------
     # PATHS
     # -----------------------------------------------------------------------
-    notebook_dir = Path.cwd()
-    project_root = notebook_dir.parent if notebook_dir.name == "smf_demo" else notebook_dir
+    script_dir = Path.cwd()
+    project_root = script_dir.parent if script_dir.name == "smf_demo" else script_dir
     calib_dir    = project_root / "calibration_work"
     summary_dir  = calib_dir / "03_comparisons" / "summary_tables"
     csv_dir      = calib_dir / "03_comparisons" / "csv_exports"

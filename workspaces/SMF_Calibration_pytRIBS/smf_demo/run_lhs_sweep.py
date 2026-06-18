@@ -101,8 +101,8 @@ def build_and_run_lhs(ks_mult, kinemvelcoef):
     """
     run_id, change_tested = build_lhs_run_id(ks_mult, kinemvelcoef)
 
-    notebook_dir = Path.cwd()
-    project_root = notebook_dir.parent if notebook_dir.name == "smf_demo" else notebook_dir
+    script_dir = Path.cwd()
+    project_root = script_dir.parent if script_dir.name == "smf_demo" else script_dir
     calib_dir    = project_root / "calibration_work"
 
     run_category       = "71_lhs"
@@ -130,8 +130,7 @@ def build_and_run_lhs(ks_mult, kinemvelcoef):
         from pytRIBS.classes import Project, Soil, Land, Met, Model
         from pytRIBS.shared.inout import InOut
 
-        name = builder.LOCATION
-        proj = Project(os.getcwd(), name, builder.EPSG)
+        proj = Project(os.getcwd(), builder.LOCATION, builder.EPSG)
 
         landuse_ras = '../smf_init_data/LandUse.asc'
         shutil.copy(landuse_ras, proj.directories['land'])
@@ -151,27 +150,27 @@ def build_and_run_lhs(ks_mult, kinemvelcoef):
         soil.soilmapname['value']   = soil_ras
 
         soil_table = soil.read_soil_table(textures=True)
-        for cls in soil_table:
-            cls['As'] = builder.BASELINE["As_value"]
-            cls['Au'] = builder.BASELINE["Au_value"]
-            cls['ks'] = 0.7
-            cls['Cs'] = 1.4e6
-            cid = str(cls['ID'])
+        for soil_cls in soil_table:
+            soil_cls['As'] = builder.BASELINE["As_value"]
+            soil_cls['Au'] = builder.BASELINE["Au_value"]
+            soil_cls['ks'] = 0.7
+            soil_cls['Cs'] = 1.4e6
+            cid = str(soil_cls['ID'])
             if cid in builder.SOIL_PARAM_LOOKUP:
-                sp = builder.SOIL_PARAM_LOOKUP[cid]
-                cls['Ks']     = sp['Ks'] * ks_mult
-                cls['thetaS'] = sp['thetaS']
-                cls['thetaR'] = sp['thetaR']
-                cls['m']      = sp['m']
-                cls['PsiB']   = sp['PsiB']
-                cls['n']      = sp['n']
-                cls['f']      = sp['f']
+                soil_params = builder.SOIL_PARAM_LOOKUP[cid]
+                soil_cls['Ks']     = soil_params['Ks'] * ks_mult
+                soil_cls['thetaS'] = soil_params['thetaS']
+                soil_cls['thetaR'] = soil_params['thetaR']
+                soil_cls['m']      = soil_params['m']
+                soil_cls['PsiB']   = soil_params['PsiB']
+                soil_cls['n']      = soil_params['n']
+                soil_cls['f']      = soil_params['f']
 
         working_soil_table    = Path("data/model/soil/soil.sdt")
         soil.write_soil_table(soil_table, str(working_soil_table), textures=True)
-        run_specific_soil_abs = run_input_dir / f"soils_{run_id}.sdt"
-        shutil.copy(working_soil_table, run_specific_soil_abs)
-        soil.soiltablename['value'] = os.path.relpath(run_specific_soil_abs, notebook_dir)
+        run_soil_path = run_input_dir / f"soils_{run_id}.sdt"
+        shutil.copy(working_soil_table, run_soil_path)
+        soil.soiltablename['value'] = os.path.relpath(run_soil_path, script_dir)
         soil.optsoiltype['value']   = 0
 
         land = Land(meta=proj.meta)
@@ -184,7 +183,7 @@ def build_and_run_lhs(ks_mult, kinemvelcoef):
         land.write_landuse_table(landuse_list, land.landtablename['value'])
 
         met = Met(meta=proj.meta)
-        met.hydrometbasename['value'] = name
+        met.hydrometbasename['value'] = builder.LOCATION
         met.hydrometstations['value'] = "../smf_init_data/met/Master_Met.sdf"
         met.gaugestations['value']    = "../smf_init_data/met/Master_Precip.sdf"
 
@@ -197,14 +196,14 @@ def build_and_run_lhs(ks_mult, kinemvelcoef):
         model.optsnow['value']       = 0
         model.optlanduse['value']    = 0
 
-        b = builder.BASELINE
-        model.optpercolation['value']      = b["optpercolation"]
-        model.channelconductivity['value'] = b["channelconductivity_mmhr"] / 3.6e6
-        model.channelporosity['value']     = b["channelporosity"]
+        baseline = builder.BASELINE
+        model.optpercolation['value']      = baseline["optpercolation"]
+        model.channelconductivity['value'] = baseline["channelconductivity_mmhr"] / 3.6e6
+        model.channelporosity['value']     = baseline["channelporosity"]
         model.kinemvelcoef['value']        = kinemvelcoef  # explicitly use swept value
-        model.flowexp['value']             = b["flowexp"]
-        model.channelroughness['value']    = b["channelroughness"]
-        model.channelwidthcoeff['value']   = b["channelwidthcoeff"]
+        model.flowexp['value']             = baseline["flowexp"]
+        model.channelroughness['value']    = baseline["channelroughness"]
+        model.channelwidthcoeff['value']   = baseline["channelwidthcoeff"]
         model.startdate['value']           = builder.START_DATE
         model.runtime['value']             = builder.RUNTIME_HOURS
         model.rainintrvl['value']          = builder.RAIN_INTERVAL
@@ -212,9 +211,9 @@ def build_and_run_lhs(ks_mult, kinemvelcoef):
         input_file_abs    = run_input_dir / f"{run_id}.in"
         log_file_abs      = log_dir / f"{run_id}.log"
         output_prefix_abs = run_results_dir / run_id
-        input_file    = os.path.relpath(input_file_abs,    notebook_dir)
-        log_file      = os.path.relpath(log_file_abs,      notebook_dir)
-        output_prefix = os.path.relpath(output_prefix_abs, notebook_dir)
+        input_file    = os.path.relpath(input_file_abs,    script_dir)
+        log_file      = os.path.relpath(log_file_abs,      script_dir)
+        output_prefix = os.path.relpath(output_prefix_abs, script_dir)
 
         model.outfilename['value']      = output_prefix
         model.outhydrofilename['value'] = output_prefix
@@ -244,22 +243,22 @@ def build_and_run_lhs(ks_mult, kinemvelcoef):
             "event_start":               builder.EVENT_START,
             "event_end":                 builder.EVENT_END,
             "Ks_mult":                   ks_mult,
-            "f_RS_abs":                  b["f_RS_abs"],   # fixed key name, kept for run_sensitivity_single compatibility
-            "As_value":                  b["As_value"],
-            "Au_value":                  b["Au_value"],
-            "optpercolation":            b["optpercolation"],
-            "channelconductivity_mmhr":  b["channelconductivity_mmhr"],
-            "channelporosity":           b["channelporosity"],
+            "f_RS_abs":                  baseline["f_RS_abs"],   # fixed key name, kept for run_sensitivity_single compatibility
+            "As_value":                  baseline["As_value"],
+            "Au_value":                  baseline["Au_value"],
+            "optpercolation":            baseline["optpercolation"],
+            "channelconductivity_mmhr":  baseline["channelconductivity_mmhr"],
+            "channelporosity":           baseline["channelporosity"],
             "kinemvelcoef":              kinemvelcoef,
-            "flowexp":                   b["flowexp"],
-            "channelroughness":          b["channelroughness"],
-            "channelwidthcoeff":         b["channelwidthcoeff"],
+            "flowexp":                   baseline["flowexp"],
+            "channelroughness":          baseline["channelroughness"],
+            "channelwidthcoeff":         baseline["channelwidthcoeff"],
             "input_file":                input_file,
             "log_file":                  log_file,
             "output_prefix":             output_prefix,
-            "csv_export_dir":            os.path.relpath(csv_export_dir,      notebook_dir),
-            "plot_export_dir":           os.path.relpath(plot_export_dir,     notebook_dir),
-            "summary_export_dir":        os.path.relpath(summary_export_dir,  notebook_dir),
+            "csv_export_dir":            os.path.relpath(csv_export_dir,      script_dir),
+            "plot_export_dir":           os.path.relpath(plot_export_dir,     script_dir),
+            "summary_export_dir":        os.path.relpath(summary_export_dir,  script_dir),
             "swept_param":               "lhs_Ks_cv",
             "swept_value":               ks_mult,   # primary sweep value for compatibility
         }
@@ -293,8 +292,8 @@ def main():
                         help="Skip runs whose compare CSV already exists")
     args = parser.parse_args()
 
-    notebook_dir = Path.cwd()
-    project_root = notebook_dir.parent if notebook_dir.name == "smf_demo" else notebook_dir
+    script_dir = Path.cwd()
+    project_root = script_dir.parent if script_dir.name == "smf_demo" else script_dir
     calib_dir    = project_root / "calibration_work"
     summary_dir  = calib_dir / "03_comparisons" / "summary_tables"
     summary_dir.mkdir(parents=True, exist_ok=True)

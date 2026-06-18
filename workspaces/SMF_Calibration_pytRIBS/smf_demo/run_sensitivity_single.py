@@ -239,9 +239,9 @@ def run_and_score():
     # ------------------------------------------------------------------
     # Load run config written by build_sensitivity_run.py
     # ------------------------------------------------------------------
-    notebook_dir = Path.cwd()
-    project_root = (notebook_dir.parent
-                    if notebook_dir.name == "smf_demo" else notebook_dir)
+    script_dir = Path.cwd()
+    project_root = (script_dir.parent
+                    if script_dir.name == "smf_demo" else script_dir)
     calib_dir    = project_root / "calibration_work"
     config_path  = calib_dir / "current_run_config.json"
 

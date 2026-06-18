@@ -1,7 +1,10 @@
 """
 plot_lhs_synth_permetric.py
 ============================
-Phase 3 per-metric sensitivity analysis for the Series 91 synthetic
+TO RUN FOR DIFFERENT LHS, CHANGE ALL INCIDINCES OF PAST RUN # 
+AND true_values dictionary and true values suptitle
+
+Phase 3 per-metric sensitivity analysis for the Series 95 synthetic
 inversion LHS sweep.
 
 For each of the 9 hydrograph metrics scored by run_sensitivity_single.py,
@@ -14,9 +17,9 @@ parameter and that metric, then produces:
         Bars are colored by parameter family.
 
     fig11_param_metric_heatmap.png
-        Full parameter × metric correlation heatmap (Pearson r),
-        annotated with numeric values. True-value proximity is also
-        encoded as a dot-size overlay on a companion Spearman panel.
+        Full parameter × metric Pearson r heatmap, annotated with
+        numeric values. Rows are colored by hydrograph phase; colorbar
+        is positioned to the right of the panel (not over the figure).
 
     fig12_metric_vs_param_grids/
         One 2×2 scatter grid per metric: each panel shows that metric
@@ -34,7 +37,7 @@ parameter and that metric, then produces:
         Spearman ρ heatmap between the nine metrics themselves, to reveal
         which metrics carry redundant information and which are orthogonal.
 
-    console output (and per_metric_correlations_91.csv):
+    console output (and per_metric_correlations_95.csv):
         Full correlation table: one row per metric, one column per
         parameter, values = Pearson r  |  Spearman ρ.
 
@@ -42,10 +45,10 @@ Usage (run from the smf_demo directory):
     python plot_lhs_synth_permetric.py
 
 Input:
-    calibration_work/03_comparisons/summary_tables/lhs_results_synth_4param_91.csv
+    calibration_work/03_comparisons/summary_tables/lhs_results_synth_4param_95.csv
 
 Output directory:
-    calibration_work/03_comparisons/sensitivity_plots/Series91_SynthInversion/
+    calibration_work/03_comparisons/sensitivity_plots/Series95_SynthInversion/
 
 Requires:
     scipy  (for Spearman correlation)
@@ -61,39 +64,42 @@ import matplotlib.patches as mpatches
 from pathlib import Path
 from scipy.stats import spearmanr, pearsonr
 
+from parameter_key import PARAM_KEY, METRIC_KEY
+
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 
 # =======================================================================
 # CONFIG
 # =======================================================================
-RESULTS_CSV  = "lhs_results_synth_4param_91.csv"
-SERIES_LABEL = "Series91_SynthInversion"
+RESULTS_CSV  = "lhs_results_synth_4param_95.csv"
+SERIES_LABEL = "Series95_SynthInversion"
 
 KGE_CEILING = 0.912     # truth self-score ceiling
 
 TRUE_VALUES = {
-    "Ks_mult":          8.50,
-    "kinemvelcoef":     4.50,
-    "flowexp":          0.24,
-    "channelroughness": 0.026,
+    "Ks_mult":          15.0,   # baseline 8.50
+    "kinemvelcoef":     4.50,   # baseline 4.50
+    "flowexp":          0.24,   # baseline 0.24
+    "channelroughness": 0.026,  # baseline 0.026
 }
 
-# Swept parameter metadata
-PARAMS = {
-    "Ks_mult":          {"label": "Ks mult",    "color": "#2a9d8f", "family": "Soil"},
-    "kinemvelcoef":     {"label": "cv",          "color": "#e76f51", "family": "Routing"},
-    "flowexp":          {"label": "r",           "color": "#e9c46a", "family": "Routing"},
-    "channelroughness": {"label": "n (channel)", "color": "#457b9d", "family": "Routing"},
+# Labels use symbol (short) from parameter_key — compact for bar chart axes
+# Update display names/symbols in parameter_key.py, not here
+PARAM_META = {
+    "Ks_mult":          {"label": PARAM_KEY["Ks_mult"]["symbol"],          "color": "#2a9d8f", "family": "Soil"},
+    "kinemvelcoef":     {"label": PARAM_KEY["kinemvelcoef"]["symbol"],     "color": "#e76f51", "family": "Routing"},
+    "flowexp":          {"label": PARAM_KEY["flowexp"]["symbol"],          "color": "#e9c46a", "family": "Routing"},
+    "channelroughness": {"label": PARAM_KEY["channelroughness"]["symbol"], "color": "#457b9d", "family": "Routing"},
 }
-PARAM_KEYS   = list(PARAMS.keys())
-PARAM_LABELS = [PARAMS[k]["label"] for k in PARAM_KEYS]
+PARAM_KEYS   = list(PARAM_META.keys())
+PARAM_LABELS = [PARAM_META[k]["label"] for k in PARAM_KEYS]
 
 # Metric metadata: column name → display properties
 # ideal_val: what "perfect" looks like (for axis reference lines)
 # direction: +1 = higher is better (e.g. KGE), -1 = lower absolute is better (errors)
 # phase: for grouping in the heatmap
-METRICS = {
+METRIC_META = {
     # --- pre-peak ---
     "first_arrival_error_min": {
         "label":     "First arrival\nerror (min)",
@@ -163,14 +169,14 @@ METRICS = {
         "phase_color": "#6a4c93",
     },
 }
-METRIC_KEYS = list(METRICS.keys())
+METRIC_KEYS = list(METRIC_META.keys())
 
 
 # =======================================================================
 # PATHS
 # =======================================================================
-notebook_dir = Path.cwd()
-project_root = notebook_dir.parent if notebook_dir.name == "smf_demo" else notebook_dir
+script_dir = Path.cwd()
+project_root = script_dir.parent if script_dir.name == "smf_demo" else script_dir
 calib_dir    = project_root / "calibration_work"
 summary_dir  = calib_dir / "03_comparisons" / "summary_tables"
 plot_dir     = calib_dir / "03_comparisons" / "sensitivity_plots" / SERIES_LABEL
@@ -271,11 +277,11 @@ spearman_df.index.name = "metric"
 print("\n" + "="*70)
 print("PEARSON r  (parameter vs metric)")
 print("="*70)
-header = f"{'Metric':<38s}" + "".join(f"{PARAMS[p]['label']:>10s}" for p in PARAM_KEYS)
+header = f"{'Metric':<38s}" + "".join(f"{PARAM_META[p]['label']:>10s}" for p in PARAM_KEYS)
 print(header)
 print("-"*70)
 for m in available_metrics:
-    row_str = f"{METRICS[m]['label'].replace(chr(10), ' '):<38s}"
+    row_str = f"{METRIC_META[m]['label'].replace(chr(10), ' '):<38s}"
     for p in PARAM_KEYS:
         v = pearson_table[m].get(p, np.nan)
         row_str += f"  {v:+6.3f}  " if not np.isnan(v) else f"   {'NaN':>6s}  "
@@ -287,7 +293,7 @@ print("="*70)
 print(header)
 print("-"*70)
 for m in available_metrics:
-    row_str = f"{METRICS[m]['label'].replace(chr(10), ' '):<38s}"
+    row_str = f"{METRIC_META[m]['label'].replace(chr(10), ' '):<38s}"
     for p in PARAM_KEYS:
         v = spearman_table[m].get(p, np.nan)
         row_str += f"  {v:+6.3f}  " if not np.isnan(v) else f"   {'NaN':>6s}  "
@@ -300,14 +306,14 @@ for m in available_metrics:
     for p in PARAM_KEYS:
         combined_rows.append({
             "metric":       m,
-            "metric_label": METRICS[m]["label"].replace("\n", " "),
-            "phase":        METRICS[m]["phase"],
+            "metric_label": METRIC_META[m]["label"].replace("\n", " "),
+            "phase":        METRIC_META[m]["phase"],
             "parameter":    p,
-            "param_label":  PARAMS[p]["label"],
+            "param_label":  PARAM_META[p]["label"],
             "pearson_r":    pearson_table[m].get(p, np.nan),
             "spearman_rho": spearman_table[m].get(p, np.nan),
         })
-corr_csv_path = summary_dir / "per_metric_correlations_91.csv"
+corr_csv_path = summary_dir / "per_metric_correlations_95.csv"
 pd.DataFrame(combined_rows).to_csv(corr_csv_path, index=False)
 print(f"Correlation table saved to: {corr_csv_path.name}\n")
 
@@ -329,7 +335,7 @@ axes_flat = axes.flatten() if n_metrics > 1 else [axes]
 
 x_pos    = np.arange(len(PARAM_KEYS))
 bar_w    = 0.35
-colors   = [PARAMS[p]["color"] for p in PARAM_KEYS]
+colors   = [PARAM_META[p]["color"] for p in PARAM_KEYS]
 
 for ax_idx, m in enumerate(available_metrics):
     ax = axes_flat[ax_idx]
@@ -360,9 +366,9 @@ for ax_idx, m in enumerate(available_metrics):
     ax.axhline( 0.3, color="gray", linewidth=0.6, linestyle=":", alpha=0.6)
     ax.axhline(-0.3, color="gray", linewidth=0.6, linestyle=":", alpha=0.6)
 
-    phase_col = METRICS[m]["phase_color"]
+    phase_col = METRIC_META[m]["phase_color"]
     ax.set_facecolor(phase_col + "22")   # subtle phase tint
-    ax.set_title(METRICS[m]["label"], fontsize=9, fontweight="bold",
+    ax.set_title(METRIC_META[m]["label"], fontsize=9, fontweight="bold",
                  color="#333333", pad=4)
     ax.set_xticks(x_pos)
     ax.set_xticklabels(PARAM_LABELS, fontsize=8)
@@ -372,9 +378,9 @@ for ax_idx, m in enumerate(available_metrics):
     ax.tick_params(axis="y", labelsize=8)
 
     # Phase label in corner
-    phase_label = METRICS[m]["phase"].upper()
+    phase_label = METRIC_META[m]["phase"].upper()
     ax.text(0.98, 0.97, phase_label, transform=ax.transAxes,
-            fontsize=7, color=METRICS[m]["phase_color"],
+            fontsize=7, color=METRIC_META[m]["phase_color"],
             ha="right", va="top", fontweight="bold", alpha=0.8)
 
 # Legend (one shared legend on the first panel)
@@ -391,7 +397,7 @@ for ax_idx in range(n_metrics, len(axes_flat)):
     axes_flat[ax_idx].axis("off")
 
 fig.suptitle(
-    f"Parameter–metric correlations — Series 91  |  Synthetic Inversion  (n={len(df)})\n"
+    f"Parameter–metric correlations — Series 95  |  Synthetic Inversion  (n={len(df)})\n"
     f"Solid bars = Pearson r  |  Hatched bars = Spearman ρ  |  "
     f"Gray dotted lines = |r| = 0.3 threshold",
     fontsize=11, y=1.01)
@@ -400,85 +406,78 @@ save_fig(fig, "fig10_permetric_correlation_bars.png")
 
 
 # =======================================================================
-# FIG 11: Correlation heatmap (Pearson and Spearman side by side)
+# FIG 11: Parameter × metric Pearson r heatmap (single panel)
+# Colorbar is anchored to the right of the axes via fig.colorbar(im, ax=ax)
+# to keep it from overlapping the heatmap cells.
 # =======================================================================
-print("Figure 11: Correlation heatmaps...")
+print("Figure 11: Correlation heatmap (Pearson r)...")
 
-# Build display arrays: rows = metrics, cols = params
-pearson_arr  = np.array([[pearson_table[m].get(p, np.nan)  for p in PARAM_KEYS]
-                          for m in available_metrics])
-spearman_arr = np.array([[spearman_table[m].get(p, np.nan) for p in PARAM_KEYS]
-                          for m in available_metrics])
+# Build display array: rows = metrics, cols = params
+pearson_arr = np.array([[pearson_table[m].get(p, np.nan) for p in PARAM_KEYS]
+                         for m in available_metrics])
 
-metric_display_labels = [METRICS[m]["label"] for m in available_metrics]
-phase_colors_ordered  = [METRICS[m]["phase_color"] for m in available_metrics]
+metric_display_labels = [METRIC_META[m]["label"] for m in available_metrics]
+phase_colors_ordered  = [METRIC_META[m]["phase_color"] for m in available_metrics]
 
-fig, (ax_p, ax_s) = plt.subplots(1, 2, figsize=(14, 0.65 * n_metrics + 2.5),
-                                   sharey=True)
+fig, ax = plt.subplots(1, 1, figsize=(7, 0.65 * n_metrics + 2.5))
 
 cmap = plt.get_cmap("RdBu_r")
 norm = mcolors.Normalize(vmin=-1.0, vmax=1.0)
 
-for ax, arr, title in [
-    (ax_p, pearson_arr,  "Pearson r"),
-    (ax_s, spearman_arr, "Spearman ρ"),
-]:
-    im = ax.imshow(arr, cmap=cmap, norm=norm, aspect="auto")
+im = ax.imshow(pearson_arr, cmap=cmap, norm=norm, aspect="auto")
 
-    # Annotate each cell
-    for i in range(len(available_metrics)):
-        for j in range(len(PARAM_KEYS)):
-            v = arr[i, j]
-            if np.isnan(v):
-                ax.text(j, i, "NaN", ha="center", va="center",
-                        fontsize=8, color="gray")
-            else:
-                text_col = "white" if abs(v) > 0.6 else "black"
-                ax.text(j, i, f"{v:+.2f}", ha="center", va="center",
-                        fontsize=8.5, fontweight="bold", color=text_col)
+# Annotate each cell
+for i in range(len(available_metrics)):
+    for j in range(len(PARAM_KEYS)):
+        v = pearson_arr[i, j]
+        if np.isnan(v):
+            ax.text(j, i, "NaN", ha="center", va="center",
+                    fontsize=8, color="gray")
+        else:
+            text_col = "white" if abs(v) > 0.6 else "black"
+            ax.text(j, i, f"{v:+.2f}", ha="center", va="center",
+                    fontsize=8.5, fontweight="bold", color=text_col)
 
-    ax.set_xticks(range(len(PARAM_KEYS)))
-    ax.set_xticklabels(PARAM_LABELS, fontsize=9)
-    ax.set_title(title, fontsize=12, fontweight="bold", pad=8)
-    ax.set_xlabel("Parameter", fontsize=10)
+ax.set_xticks(range(len(PARAM_KEYS)))
+ax.set_xticklabels(PARAM_LABELS, fontsize=9)
+ax.set_title("Pearson r", fontsize=12, fontweight="bold", pad=8)
+ax.set_xlabel("Parameter", fontsize=10)
 
-    # Colored row labels by phase
-    ax.set_yticks(range(len(available_metrics)))
-    ax.set_yticklabels(metric_display_labels, fontsize=8.5)
-    for i, (tick, col) in enumerate(zip(ax.get_yticklabels(), phase_colors_ordered)):
-        tick.set_color(col)
+# Colored row labels by phase
+ax.set_yticks(range(len(available_metrics)))
+ax.set_yticklabels(metric_display_labels, fontsize=8.5)
+for tick, col in zip(ax.get_yticklabels(), phase_colors_ordered):
+    tick.set_color(col)
 
-    # Horizontal separators between phases
-    current_phase = None
-    for i, m in enumerate(available_metrics):
-        if METRICS[m]["phase"] != current_phase:
-            if i > 0:
-                ax.axhline(i - 0.5, color="black", linewidth=1.5, alpha=0.7)
-            current_phase = METRICS[m]["phase"]
+# Horizontal separators between phases
+current_phase = None
+for i, m in enumerate(available_metrics):
+    if METRIC_META[m]["phase"] != current_phase:
+        if i > 0:
+            ax.axhline(i - 0.5, color="black", linewidth=1.5, alpha=0.7)
+        current_phase = METRIC_META[m]["phase"]
 
-    ax.tick_params(left=False)
+ax.tick_params(left=False)
 
-# Shared colorbar
-sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-sm.set_array([])
-cbar = fig.colorbar(sm, ax=[ax_p, ax_s], fraction=0.025, pad=0.03)
-cbar.set_label("Correlation coefficient", fontsize=10)
+# Colorbar anchored to the right of the single axes — does not overlap cells
+cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+cbar.set_label("Pearson r", fontsize=10)
 
 # Phase legend
 phase_handles = {}
 for m in available_metrics:
-    ph = METRICS[m]["phase"]
+    ph = METRIC_META[m]["phase"]
     if ph not in phase_handles:
         phase_handles[ph] = mpatches.Patch(
-            facecolor=METRICS[m]["phase_color"], label=ph.capitalize())
+            facecolor=METRIC_META[m]["phase_color"], label=ph.capitalize())
 fig.legend(handles=list(phase_handles.values()), fontsize=9, loc="lower center",
            ncol=len(phase_handles), bbox_to_anchor=(0.5, -0.04),
            facecolor="white", framealpha=0.9)
 
 fig.suptitle(
-    f"Parameter × metric correlation heatmap — Series 91  |  Synthetic Inversion  "
+    f"Parameter × metric Pearson r — Series 95  |  Synthetic Inversion  "
     f"(n={len(df)})\n"
-    f"True values: Ks=8.5x  cv=4.5  r=0.24  n=0.026  |  f fixed at 0.020 mm⁻¹",
+    f"True values: Ks=15.0x  cv=4.5  r=0.24  n=0.026  |  f fixed at 0.020 mm⁻¹",
     fontsize=11, y=1.02)
 fig.tight_layout()
 save_fig(fig, "fig11_param_metric_heatmap.png")
@@ -498,9 +497,9 @@ for m in available_metrics:
         continue
 
     y_raw = metric_arrays[m]
-    ideal = METRICS[m]["ideal"]
-    phase = METRICS[m]["phase"]
-    mlabel = METRICS[m]["label"].replace("\n", " ")
+    ideal = METRIC_META[m]["ideal"]
+    phase = METRIC_META[m]["phase"]
+    mlabel = METRIC_META[m]["label"].replace("\n", " ")
 
     fig, axes = plt.subplots(2, 2, figsize=(11, 8))
 
@@ -543,11 +542,11 @@ for m in available_metrics:
         ax.axhline(ideal, color="green", linewidth=1.2, linestyle="-.",
                    alpha=0.7, label=f"Ideal = {ideal}", zorder=5)
 
-        plab = PARAMS[p]["label"]
+        plab = PARAM_META[p]["label"]
         corr_str = (f"r={pr:+.3f}" if not np.isnan(pr) else "r=NaN") + "  "
         corr_str += (f"ρ={sr:+.3f}" if not np.isnan(sr) else "ρ=NaN")
         ax.set_title(f"{plab}  |  {corr_str}", fontsize=9, fontweight="bold")
-        ax.set_xlabel(PARAMS[p]["label"], fontsize=9)
+        ax.set_xlabel(PARAM_META[p]["label"], fontsize=9)
         ax.set_ylabel(mlabel, fontsize=9)
         ax.legend(fontsize=7, loc="best", facecolor="white", framealpha=0.85)
         ax.grid(alpha=0.2)
@@ -557,7 +556,7 @@ for m in available_metrics:
 
     fig.suptitle(
         f"{mlabel}  vs each swept parameter\n"
-        f"Series 91  |  Synthetic Inversion  |  Phase: {phase}  (n={len(df)})\n"
+        f"Series 95  |  Synthetic Inversion  |  Phase: {phase}  (n={len(df)})\n"
         f"Red dashed = true value  |  Green dash-dot = ideal  |  Navy dashed = rolling median",
         fontsize=10, y=1.01)
     fig.tight_layout()
@@ -620,7 +619,7 @@ for ax_idx, m in enumerate(available_metrics):
             ax.axhline(tv_norm, color="red", linewidth=0.9, linestyle=":",
                        alpha=0.5, zorder=2)
 
-    mlabel = METRICS[m]["label"].replace("\n", " ")
+    mlabel = METRIC_META[m]["label"].replace("\n", " ")
     # subtitle: best/worst metric value
     top_metric    = top20[m].median() if m in top20.columns else np.nan
     bottom_metric = bottom20[m].median() if m in bottom20.columns else np.nan
@@ -638,9 +637,9 @@ for ax_idx, m in enumerate(available_metrics):
     ax.grid(axis="y", alpha=0.2)
     ax.tick_params(labelsize=7.5)
 
-    phase_label = METRICS[m]["phase"].upper()
+    phase_label = METRIC_META[m]["phase"].upper()
     ax.text(0.99, 0.99, phase_label, transform=ax.transAxes,
-            fontsize=7, color=METRICS[m]["phase_color"],
+            fontsize=7, color=METRIC_META[m]["phase_color"],
             ha="right", va="top", fontweight="bold")
 
 # Shared legend
@@ -659,7 +658,7 @@ for ax_idx in range(n_metrics_strip, len(axes_flat)):
 
 fig.suptitle(
     f"Top {N_STRIP} vs Bottom {N_STRIP} parameter distributions — "
-    f"Series 91  |  Synthetic Inversion  (n={len(df)})\n"
+    f"Series 95  |  Synthetic Inversion  (n={len(df)})\n"
     f"Convergence near true value (red dots) = parameter is identifiable",
     fontsize=11, y=1.04)
 fig.tight_layout()
@@ -704,7 +703,7 @@ for i in range(n_m):
             ax.text(j, i, f"{v:+.2f}", ha="center", va="center",
                     fontsize=8, fontweight="bold", color=text_col)
 
-short_labels = [METRICS[m]["label"].replace("\n", "\n") for m in available_metrics]
+short_labels = [METRIC_META[m]["label"].replace("\n", "\n") for m in available_metrics]
 ax.set_xticks(range(n_m))
 ax.set_xticklabels(short_labels, fontsize=8, rotation=30, ha="right")
 ax.set_yticks(range(n_m))
@@ -712,23 +711,23 @@ ax.set_yticklabels(short_labels, fontsize=8)
 
 # Color x-tick labels by phase
 for i, m in enumerate(available_metrics):
-    ax.get_xticklabels()[i].set_color(METRICS[m]["phase_color"])
-    ax.get_yticklabels()[i].set_color(METRICS[m]["phase_color"])
+    ax.get_xticklabels()[i].set_color(METRIC_META[m]["phase_color"])
+    ax.get_yticklabels()[i].set_color(METRIC_META[m]["phase_color"])
 
 # Phase separators
 current_phase = None
 for i, m in enumerate(available_metrics):
-    if METRICS[m]["phase"] != current_phase:
+    if METRIC_META[m]["phase"] != current_phase:
         if i > 0:
             ax.axhline(i - 0.5, color="black", linewidth=1.5)
             ax.axvline(i - 0.5, color="black", linewidth=1.5)
-        current_phase = METRICS[m]["phase"]
+        current_phase = METRIC_META[m]["phase"]
 
 cbar = fig.colorbar(im, ax=ax, fraction=0.038, pad=0.04)
 cbar.set_label("Spearman ρ", fontsize=10)
 
 ax.set_title(
-    f"Metric–metric Spearman ρ — Series 91  |  Synthetic Inversion  (n={len(df)})\n"
+    f"Metric–metric Spearman ρ — Series 95  |  Synthetic Inversion  (n={len(df)})\n"
     f"High |ρ| = redundant metrics  |  Low |ρ| = orthogonal information",
     fontsize=11, pad=10)
 fig.tight_layout()
@@ -739,7 +738,7 @@ save_fig(fig, "fig14_metric_correlation_matrix.png")
 # CONSOLE SUMMARY
 # =======================================================================
 print(f"\n{'='*65}")
-print("PHASE 3 SUMMARY  —  Series 91 Per-Metric Sensitivity")
+print("PHASE 3 SUMMARY  —  Series 92 Per-Metric Sensitivity")
 print(f"{'='*65}")
 
 print("\nStrongest parameter–metric signals (|Spearman ρ| > 0.20):")
@@ -748,8 +747,8 @@ for m in available_metrics:
     for p in PARAM_KEYS:
         sr = spearman_table[m].get(p, np.nan)
         if not np.isnan(sr) and abs(sr) > 0.20:
-            mlabel = METRICS[m]["label"].replace("\n", " ")
-            plabel = PARAMS[p]["label"]
+            mlabel = METRIC_META[m]["label"].replace("\n", " ")
+            plabel = PARAM_META[p]["label"]
             print(f"  {mlabel:<40s}  ←  {plabel:<15s}  ρ = {sr:+.3f}")
             printed_any = True
 if not printed_any:

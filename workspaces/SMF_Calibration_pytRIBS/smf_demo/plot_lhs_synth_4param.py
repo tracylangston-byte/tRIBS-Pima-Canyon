@@ -1,15 +1,17 @@
 """
 plot_lhs_synth_4param.py
 ========================
-Generates all diagnostic figures from the Series 91 synthetic inversion
+Generates all diagnostic figures from the Series 95 synthetic inversion
 LHS sweep. Includes true value reference lines on all 1D response plots
 and pairwise scatter panels to assess parameter identifiability.
+
+TO USE, CHANGE ALL INCIDENTS OF SERIES NUMBER & TRUE_VALUES DICTIONARY
 
 Usage (run from the smf_demo directory):
     python plot_lhs_synth_4param.py
 
 Produces 9 figures saved to:
-    calibration_work/03_comparisons/sensitivity_plots/Series91_SynthInversion/
+    calibration_work/03_comparisons/sensitivity_plots/Series95_SynthInversion/
 
 Figure list
 -----------
@@ -39,11 +41,13 @@ import matplotlib.ticker as mticker
 from itertools import combinations
 from pathlib import Path
 
+from parameter_key import PARAM_KEY
+
 # =======================================================================
 # CONFIG — edit these two lines to switch between series
 # =======================================================================
-RESULTS_CSV  = "lhs_results_synth_4param_91.csv"
-SERIES_LABEL = "Series91_SynthInversion"
+RESULTS_CSV  = "lhs_results_synth_4param_95.csv"
+SERIES_LABEL = "Series95_SynthInversion"
 # =======================================================================
 
 EVENT_LABEL      = "SMF Aug 12, 2014  |  Synthetic Inversion"
@@ -55,17 +59,17 @@ KGE_CEILING = 0.912
 
 # True parameter values — drawn as red dashed lines on Fig 6
 TRUE_VALUES = {
-    "Ks_mult":          8.50,
-    "kinemvelcoef":     4.50,
-    "flowexp":          0.24,
-    "channelroughness": 0.026,
+    "Ks_mult":          15.0,   # baseline 8.50
+    "kinemvelcoef":     4.50,   # baseline 4.50
+    "flowexp":          0.24,   # baseline 0.24
+    "channelroughness": 0.026,    # baseline 0.026
 }
 
 # -----------------------------------------------------------------------
 # PATHS
 # -----------------------------------------------------------------------
-notebook_dir = Path.cwd()
-project_root = notebook_dir.parent if notebook_dir.name == "smf_demo" else notebook_dir
+script_dir = Path.cwd()
+project_root = script_dir.parent if script_dir.name == "smf_demo" else script_dir
 calib_dir    = project_root / "calibration_work"
 summary_dir  = calib_dir / "03_comparisons" / "summary_tables"
 csv_dir      = calib_dir / "03_comparisons" / "csv_exports"
@@ -97,7 +101,7 @@ print(f"  {len(df)} runs after dropping NaN rows")
 
 ks_lo = df["Ks_mult"].min()
 ks_hi = df["Ks_mult"].max()
-SERIES_TITLE = (f"Series 91  |  Synthetic Inversion  |  "
+SERIES_TITLE = (f"Series 95  |  Synthetic Inversion  |  "
                 f"Ks {ks_lo:.1f}-{ks_hi:.1f}x  |  KGE ceiling={KGE_CEILING}")
 
 print(f"Series: {SERIES_TITLE}")
@@ -122,14 +126,15 @@ print(f"  KGE range: {kge_vals.min():.3f} to {kge_vals.max():.3f}")
 print(f"  PBIAS range: {pbias_vals.min():.1f}% to {pbias_vals.max():.1f}%")
 
 # Swept parameter metadata
-PARAMS = {
-    "Ks_mult":          {"label": "Ks multiplier",               "vals": ks_vals, "fmt": "{:.2f}x"},
-    "kinemvelcoef":     {"label": "Hillslope velocity coef. cv", "vals": cv_vals, "fmt": "{:.2f}"},
-    "flowexp":          {"label": "Hillslope velocity exp. r",   "vals": r_vals,  "fmt": "{:.3f}"},
-    "channelroughness": {"label": "Channel roughness n",         "vals": n_vals,  "fmt": "{:.4f}"},
+# Labels sourced from parameter_key.py — update display names there, not here
+PARAM_META = {
+    "Ks_mult":          {"label": PARAM_KEY["Ks_mult"]["display_name"],          "vals": ks_vals, "fmt": "{:.2f}x"},
+    "kinemvelcoef":     {"label": PARAM_KEY["kinemvelcoef"]["display_name"],     "vals": cv_vals, "fmt": "{:.2f}"},
+    "flowexp":          {"label": PARAM_KEY["flowexp"]["display_name"],          "vals": r_vals,  "fmt": "{:.3f}"},
+    "channelroughness": {"label": PARAM_KEY["channelroughness"]["display_name"], "vals": n_vals,  "fmt": "{:.4f}"},
 }
-PARAM_KEYS   = list(PARAMS.keys())
-PARAM_LABELS = [PARAMS[k]["label"] for k in PARAM_KEYS]
+PARAM_KEYS   = list(PARAM_META.keys())
+PARAM_LABELS = [PARAM_META[k]["label"] for k in PARAM_KEYS]
 
 # KGE colormap — plasma; norm on 5th–95th percentile with clip
 KGE_CMAP = plt.get_cmap("plasma")
@@ -360,8 +365,8 @@ for pi, (k1, k2) in enumerate(pairs):
                linestyle="--", alpha=0.8, label="True value")
     ax.axhline(TRUE_VALUES[k2], color="red", linewidth=1.5,
                linestyle="--", alpha=0.8)
-    ax.set_xlabel(PARAMS[k1]["label"], fontsize=9)
-    ax.set_ylabel(PARAMS[k2]["label"], fontsize=9)
+    ax.set_xlabel(PARAM_META[k1]["label"], fontsize=9)
+    ax.set_ylabel(PARAM_META[k2]["label"], fontsize=9)
     ax.legend(fontsize=7, loc="upper right", facecolor="white", framealpha=0.85)
     ax.grid(alpha=0.2)
 
@@ -413,7 +418,7 @@ for ax, key in zip(axes, PARAM_KEYS):
                label=f"KGE ceiling = {KGE_CEILING}")
 
     ax.axhline(0, color="gray", linewidth=0.8, linestyle=":", alpha=0.5)
-    ax.set_xlabel(PARAMS[key]["label"], fontsize=10)
+    ax.set_xlabel(PARAM_META[key]["label"], fontsize=10)
     ax.set_ylabel("KGE", fontsize=10)
     ax.legend(fontsize=8, loc="lower right", facecolor="white", framealpha=0.85)
     ax.grid(alpha=0.25)

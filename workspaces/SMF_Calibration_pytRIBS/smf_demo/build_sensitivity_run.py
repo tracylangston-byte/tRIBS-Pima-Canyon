@@ -69,7 +69,7 @@ from pathlib import Path
 # Update previously calibrated parameters here before each new sweep.
 # -----------------------------------------------------------------------
 BASELINE = {
-    "Ks_mult":           6.1,    # baseline 6.1
+    "Ks_mult":           8.5,    # baseline 8.5
     "f_RS_abs":          0.020,  # absolute f for RS soil (1/mm)
     "As_value":          1.0,
     "Au_value":          1.0,
@@ -79,9 +79,9 @@ BASELINE = {
     "optpercolation":    0,
     "channelconductivity_mmhr": 70,
     "channelporosity":   0.4,
-    "kinemvelcoef":      3.0,   # baseline 3
-    "flowexp":           0.2,    # baseline 0.3
-    "channelroughness":  0.04,   # baseline 0.04
+    "kinemvelcoef":      4.5,   # baseline 4.5
+    "flowexp":           0.24,    # baseline 0.24
+    "channelroughness":  0.026,   # baseline 0.026
     "channelwidthcoeff": 2.33,
 }
 
@@ -161,8 +161,8 @@ def build_input_file(param_name, value):
     run_id, change_tested = build_run_id(param_name, value)
     run_category = get_run_category(PARAM_CONFIG[param_name]["series"])
 
-    notebook_dir = Path.cwd()
-    project_root = notebook_dir.parent if notebook_dir.name == "smf_demo" else notebook_dir
+    script_dir = Path.cwd()
+    project_root = script_dir.parent if script_dir.name == "smf_demo" else script_dir
     calib_dir    = project_root / "calibration_work"
 
     run_input_dir      = calib_dir / "01_run_inputs"  / run_category
@@ -180,9 +180,9 @@ def build_input_file(param_name, value):
     log_file_abs      = log_dir        / f"{run_id}.log"
     output_prefix_abs = run_results_dir / run_id
 
-    input_file    = os.path.relpath(input_file_abs,    notebook_dir)
-    log_file      = os.path.relpath(log_file_abs,      notebook_dir)
-    output_prefix = os.path.relpath(output_prefix_abs, notebook_dir)
+    input_file    = os.path.relpath(input_file_abs,    script_dir)
+    log_file      = os.path.relpath(log_file_abs,      script_dir)
+    output_prefix = os.path.relpath(output_prefix_abs, script_dir)
 
     # --- Resolve parameter values for this run ---
     params = {**BASELINE}
@@ -210,8 +210,7 @@ def build_input_file(param_name, value):
         Au_value = params["Au_value"]
 
     # --- pytRIBS setup ---
-    name = LOCATION
-    proj = Project(os.getcwd(), name, EPSG)
+    proj = Project(os.getcwd(), LOCATION, EPSG)
 
     # Data files
     landuse_ras = '../smf_init_data/LandUse.asc'
@@ -238,40 +237,40 @@ def build_input_file(param_name, value):
 
     soil_table = soil.read_soil_table(textures=True)
 
-    for cls in soil_table:
-        cls['As'] = As_value
-        cls['Au'] = Au_value
-        cls['ks'] = 0.7
-        cls['Cs'] = 1.4e6
-        cid = str(cls['ID'])
+    for soil_cls in soil_table:
+        soil_cls['As'] = As_value
+        soil_cls['Au'] = Au_value
+        soil_cls['ks'] = 0.7
+        soil_cls['Cs'] = 1.4e6
+        cid = str(soil_cls['ID'])
         if cid in SOIL_PARAM_LOOKUP:
-            sp = SOIL_PARAM_LOOKUP[cid]
-            cls['Ks']     = sp['Ks'] * Ks_mult
-            cls['thetaR'] = sp['thetaR']
-            cls['m']      = sp['m']
-            cls['PsiB']   = sp['PsiB'] * psiB_mult
-            cls['n']      = sp['n']
+            soil_params = SOIL_PARAM_LOOKUP[cid]
+            soil_cls['Ks']     = soil_params['Ks'] * Ks_mult
+            soil_cls['thetaR'] = soil_params['thetaR']
+            soil_cls['m']      = soil_params['m']
+            soil_cls['PsiB']   = soil_params['PsiB'] * psiB_mult
+            soil_cls['n']      = soil_params['n']
             # thetaS: apply multiplier uniformly; guard against thetaS <= thetaR
-            raw_thetaS = sp['thetaS'] * thetaS_mult
-            cls['thetaS'] = max(raw_thetaS, sp['thetaR'] + 0.01)
+            raw_thetaS = soil_params['thetaS'] * thetaS_mult
+            soil_cls['thetaS'] = max(raw_thetaS, soil_params['thetaR'] + 0.01)
             # f: RS soil uses swept value for f_RS_abs; all others use baseline
             if cid == '1' and param_name == "f_RS_abs":
-                cls['f'] = f_RS_abs
+                soil_cls['f'] = f_RS_abs
             else:
-                cls['f'] = sp['f']
+                soil_cls['f'] = soil_params['f']
         else:
             print(f"WARNING: Soil ID {cid} not in lookup; using defaults.")
-            cls['Ks'] = 10.0; cls['thetaS'] = 0.4; cls['thetaR'] = 0.05
-            cls['m'] = 0.2; cls['PsiB'] = -200; cls['f'] = 0.001; cls['n'] = 0.4
+            soil_cls['Ks'] = 10.0; soil_cls['thetaS'] = 0.4; soil_cls['thetaR'] = 0.05
+            soil_cls['m'] = 0.2; soil_cls['PsiB'] = -200; soil_cls['f'] = 0.001; soil_cls['n'] = 0.4
 
     working_soil_table    = Path("data/model/soil/soil.sdt")
     soil.write_soil_table(soil_table, str(working_soil_table), textures=True)
 
-    run_specific_soil_abs = run_input_dir / f"soils_{run_id}.sdt"
-    if working_soil_table.resolve() != run_specific_soil_abs.resolve():
-        shutil.copy(working_soil_table, run_specific_soil_abs)
+    run_soil_path = run_input_dir / f"soils_{run_id}.sdt"
+    if working_soil_table.resolve() != run_soil_path.resolve():
+        shutil.copy(working_soil_table, run_soil_path)
 
-    soil.soiltablename['value'] = os.path.relpath(run_specific_soil_abs, notebook_dir)
+    soil.soiltablename['value'] = os.path.relpath(run_soil_path, script_dir)
     soil.optsoiltype['value']   = 0
 
     # Land class
@@ -290,7 +289,7 @@ def build_input_file(param_name, value):
 
     # Met class
     met = Met(meta=proj.meta)
-    met.hydrometbasename['value'] = name
+    met.hydrometbasename['value'] = LOCATION
     met.hydrometstations['value'] = "../smf_init_data/met/Master_Met.sdf"
     met.gaugestations['value']    = "../smf_init_data/met/Master_Precip.sdf"
 
@@ -305,8 +304,8 @@ def build_input_file(param_name, value):
 
     # Soil bedrock / snow / land
     model.optbedrock['value']  = 1
-    model.optsnow['value']     = 0
-    model.optlanduse['value']  = 0
+    model.optsnow['value']     = 0      # Turn off or no calibration on dry land
+    model.optlanduse['value']  = 0      # Only paramters are from the land use table so option 0
 
     # Channel loss
     model.optpercolation['value']      = optpercolation
@@ -325,6 +324,8 @@ def build_input_file(param_name, value):
     model.outfilename['value']       = output_prefix
     model.outhydrofilename['value']  = output_prefix
     model.rainintrvl['value']        = RAIN_INTERVAL
+    model.opintrvl['value']          = 0.0833   # 5-minute time series output
+    model.spopintrvl['value']        = 1      # spatial output stays at 1 hour (int required by tRIBS parser)
 
     # Node output lists
     node_ids_pixel = [1960, 1547, 3082]
@@ -367,9 +368,9 @@ def build_input_file(param_name, value):
         "input_file":                input_file,
         "log_file":                  log_file,
         "output_prefix":             output_prefix,
-        "csv_export_dir":            os.path.relpath(csv_export_dir,      notebook_dir),
-        "plot_export_dir":           os.path.relpath(plot_export_dir,     notebook_dir),
-        "summary_export_dir":        os.path.relpath(summary_export_dir,  notebook_dir),
+        "csv_export_dir":            os.path.relpath(csv_export_dir,      script_dir),
+        "plot_export_dir":           os.path.relpath(plot_export_dir,     script_dir),
+        "summary_export_dir":        os.path.relpath(summary_export_dir,  script_dir),
         "swept_param":               param_name,
         "swept_value":               value,
     }

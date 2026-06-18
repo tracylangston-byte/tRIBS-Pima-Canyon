@@ -45,8 +45,8 @@ EVENT_CROP_END   = "2014-08-12 21:00"
 # -----------------------------------------------------------------------
 # PATHS
 # -----------------------------------------------------------------------
-notebook_dir = Path.cwd()
-project_root = notebook_dir.parent if notebook_dir.name == "smf_demo" else notebook_dir
+script_dir = Path.cwd()
+project_root = script_dir.parent if script_dir.name == "smf_demo" else script_dir
 calib_dir    = project_root / "calibration_work"
 summary_dir  = calib_dir / "03_comparisons" / "summary_tables"
 csv_dir      = calib_dir / "03_comparisons" / "csv_exports"
@@ -108,14 +108,14 @@ print(f"  KGE range:   {kge_vals.min():.3f} to {kge_vals.max():.3f}")
 print(f"  PBIAS range: {pbias_vals.min():.1f}% to {pbias_vals.max():.1f}%")
 
 # Swept parameter metadata
-PARAMS = {
+PARAM_META = {
     "Ks_mult":          {"label": "Ks multiplier",               "vals": ks_vals, "fmt": "{:.2f}x"},
     "kinemvelcoef":     {"label": "Hillslope velocity coef. cv", "vals": cv_vals, "fmt": "{:.2f}"},
     "flowexp":          {"label": "Hillslope velocity exp. r",   "vals": r_vals,  "fmt": "{:.3f}"},
     "channelroughness": {"label": "Channel roughness n",         "vals": n_vals,  "fmt": "{:.4f}"},
 }
-PARAM_KEYS   = list(PARAMS.keys())
-PARAM_LABELS = [PARAMS[k]["label"] for k in PARAM_KEYS]
+PARAM_KEYS   = list(PARAM_META.keys())
+PARAM_LABELS = [PARAM_META[k]["label"] for k in PARAM_KEYS]
 
 # KGE colormap — plasma has no white/near-white values on a white background.
 # Norm uses 5th-95th percentile of actual data with clip=True so:
@@ -329,10 +329,10 @@ ax.plot(x_positions, param_norm[best_idx],
 
 for j, (key, label) in enumerate(zip(PARAM_KEYS, PARAM_LABELS)):
     ax.axvline(j, color="gray", linewidth=0.8, alpha=0.5)
-    ax.text(j, -0.04, PARAMS[key]["fmt"].format(param_mins[j]),
+    ax.text(j, -0.04, PARAM_META[key]["fmt"].format(param_mins[j]),
             ha="center", va="top", fontsize=7.5, color="gray",
             transform=ax.get_xaxis_transform())
-    ax.text(j,  1.04, PARAMS[key]["fmt"].format(param_maxs[j]),
+    ax.text(j,  1.04, PARAM_META[key]["fmt"].format(param_maxs[j]),
             ha="center", va="bottom", fontsize=7.5, color="gray",
             transform=ax.get_xaxis_transform())
 
@@ -375,8 +375,8 @@ for ax_i, (pi, pj) in enumerate(pairs):
     ax.scatter(df[ki].iloc[best_idx], df[kj].iloc[best_idx],
                s=150, marker="*", color="white", edgecolors="black",
                linewidths=1.2, zorder=5, label=f"Best KGE={best_kge:.3f}")
-    ax.set_xlabel(PARAMS[ki]["label"], fontsize=9)
-    ax.set_ylabel(PARAMS[kj]["label"], fontsize=9)
+    ax.set_xlabel(PARAM_META[ki]["label"], fontsize=9)
+    ax.set_ylabel(PARAM_META[kj]["label"], fontsize=9)
     ax.legend(fontsize=7.5, loc="upper right", facecolor="white", framealpha=0.8)
     ax.grid(alpha=0.25)
 
@@ -418,7 +418,7 @@ for ax, key in zip(axes.flat, PARAM_KEYS):
     ax.plot(xs_sorted, ys_smooth, color="navy", linewidth=1.6,
             linestyle="--", alpha=0.7, label="Rolling median")
     ax.axhline(0, color="gray", linewidth=0.8, linestyle=":", alpha=0.6)
-    ax.set_xlabel(PARAMS[key]["label"], fontsize=10)
+    ax.set_xlabel(PARAM_META[key]["label"], fontsize=10)
     ax.set_ylabel("KGE", fontsize=10)
     ax.legend(fontsize=8, loc="lower right", facecolor="white", framealpha=0.85)
     ax.grid(alpha=0.25)

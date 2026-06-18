@@ -169,8 +169,8 @@ def main():
                         help="Skip runs whose compare CSV already exists")
     args = parser.parse_args()
 
-    notebook_dir = Path.cwd()
-    project_root = notebook_dir.parent if notebook_dir.name == "smf_demo" else notebook_dir
+    script_dir = Path.cwd()
+    project_root = script_dir.parent if script_dir.name == "smf_demo" else script_dir
     calib_dir    = project_root / "calibration_work"
     summary_dir  = calib_dir / "03_comparisons" / "summary_tables"
     summary_dir.mkdir(parents=True, exist_ok=True)
