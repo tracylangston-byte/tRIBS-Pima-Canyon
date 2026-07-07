@@ -16,6 +16,13 @@ Usage (run from the smf_demo directory):
     python build_sensitivity_run.py --param Au_value             --value 5.0
     python build_sensitivity_run.py --param AsAu_value           --value 5.0
 
+    # Pin multiple parameters at once (e.g. for a volume-matching bisection
+    # search where Ks_mult and f_RS_abs both need to differ from BASELINE,
+    # with cv/r/n pinned to synthetic-truth values rather than BASELINE):
+    python build_sensitivity_run.py --param Ks_mult --value 5.0 \\
+        --f_RS_abs 0.015 --kinemvelcoef 4.5 --flowexp 0.24 \\
+        --channelroughness 0.026 --tag volmatch
+
 These are for running a single build manually from the terminal — useful
 if you want to test one value, inspect the soil audit output, or rebuild
 a specific run without executing the full sweep. In normal use, you won't
@@ -69,7 +76,7 @@ from pathlib import Path
 # Update previously calibrated parameters here before each new sweep.
 # -----------------------------------------------------------------------
 BASELINE = {
-    "Ks_mult":           8.5,    # baseline 8.5
+    "Ks_mult":           6.1,    # baseline 6.1
     "f_RS_abs":          0.020,  # absolute f for RS soil (1/mm)
     "As_value":          1.0,
     "Au_value":          1.0,
@@ -79,9 +86,9 @@ BASELINE = {
     "optpercolation":    0,
     "channelconductivity_mmhr": 70,
     "channelporosity":   0.4,
-    "kinemvelcoef":      4.5,   # baseline 4.5
-    "flowexp":           0.24,    # baseline 0.24
-    "channelroughness":  0.026,   # baseline 0.026
+    "kinemvelcoef":      3.0,   # baseline 3
+    "flowexp":           0.2,    # baseline 0.3
+    "channelroughness":  0.04,   # baseline 0.04
     "channelwidthcoeff": 2.33,
 }
 
@@ -153,12 +160,27 @@ def get_run_category(series_str):
     return "40_multivariable"
 
 
-def build_input_file(param_name, value):
+def build_input_file(param_name, value, overrides=None, tag=""):
+    """
+    overrides : dict, optional
+        Additional {param_name: value} pairs to pin away from BASELINE,
+        independent of the single (param_name, value) pair being swept.
+        None values are ignored (falls back to BASELINE for that key).
+        Example: overrides={"f_RS_abs": 0.015, "kinemvelcoef": 4.5,
+                             "flowexp": 0.24, "channelroughness": 0.026}
+    tag : str, optional
+        Suffix appended to run_id/change_tested (e.g. "volmatch") so these
+        runs are distinguishable from true single-parameter sweeps that
+        land in the same series folder.
+    """
     from pytRIBS.classes import Project, Soil, Land, Met, Model
     from pytRIBS.shared.inout import InOut
 
     # --- Run ID and paths ---
     run_id, change_tested = build_run_id(param_name, value)
+    if tag:
+        run_id        = f"{run_id}_{tag}"
+        change_tested = f"{change_tested}_{tag}"
     run_category = get_run_category(PARAM_CONFIG[param_name]["series"])
 
     script_dir = Path.cwd()
@@ -187,6 +209,10 @@ def build_input_file(param_name, value):
     # --- Resolve parameter values for this run ---
     params = {**BASELINE}
     params[param_name] = value
+    if overrides:
+        for k, v in overrides.items():
+            if v is not None:
+                params[k] = v
 
     Ks_mult                  = params["Ks_mult"]
     f_RS_abs                 = params["f_RS_abs"]
@@ -253,8 +279,11 @@ def build_input_file(param_name, value):
             # thetaS: apply multiplier uniformly; guard against thetaS <= thetaR
             raw_thetaS = soil_params['thetaS'] * thetaS_mult
             soil_cls['thetaS'] = max(raw_thetaS, soil_params['thetaR'] + 0.01)
-            # f: RS soil uses swept value for f_RS_abs; all others use baseline
-            if cid == '1' and param_name == "f_RS_abs":
+            # f: RS soil always uses the resolved f_RS_abs value (baseline,
+            # swept, or overridden — the params dict above already handles
+            # that precedence correctly); all other soil classes use their
+            # fixed baseline f.
+            if cid == '1':
                 soil_cls['f'] = f_RS_abs
             else:
                 soil_cls['f'] = soil_params['f']
@@ -325,7 +354,7 @@ def build_input_file(param_name, value):
     model.outhydrofilename['value']  = output_prefix
     model.rainintrvl['value']        = RAIN_INTERVAL
     model.opintrvl['value']          = 0.0833   # 5-minute time series output
-    model.spopintrvl['value']        = 1      # spatial output stays at 1 hour (int required by tRIBS parser)
+    model.spopintrvl['value']        = 1        # spatial output stays at 1 hour (must be int, not float)
 
     # Node output lists
     node_ids_pixel = [1960, 1547, 3082]
@@ -392,6 +421,22 @@ if __name__ == "__main__":
                         help="Parameter to sweep")
     parser.add_argument("--value", required=True, type=float,
                         help="Value to assign to that parameter")
+    parser.add_argument("--f_RS_abs", type=float, default=None,
+                        help="Override f_RS_abs, independent of --param")
+    parser.add_argument("--kinemvelcoef", type=float, default=None,
+                        help="Override kinemvelcoef (cv), independent of --param")
+    parser.add_argument("--flowexp", type=float, default=None,
+                        help="Override flowexp (r), independent of --param")
+    parser.add_argument("--channelroughness", type=float, default=None,
+                        help="Override channelroughness (n), independent of --param")
+    parser.add_argument("--tag", type=str, default="",
+                        help="Optional suffix appended to run_id (e.g. 'volmatch')")
     args = parser.parse_args()
 
-    build_input_file(args.param, args.value)
+    overrides = {
+        "f_RS_abs":         args.f_RS_abs,
+        "kinemvelcoef":     args.kinemvelcoef,
+        "flowexp":          args.flowexp,
+        "channelroughness": args.channelroughness,
+    }
+    build_input_file(args.param, args.value, overrides=overrides, tag=args.tag)

@@ -5,6 +5,7 @@ Compare the Pearson r (parameter × metric) matrix between two LHS sweep
 series using side-by-side heatmaps with a difference panel.
 
 Output:
+    /workspaces/tRIBS-Pima-Canyon/workspaces/SMF_Calibration_pytRIBS/calibration_work/03_comparisons/sensitivity_plots/Comparisons
     fig_pearson_comparison_{SERIES_A_LABEL}_vs_{SERIES_B_LABEL}.png
 
 Usage (run from smf_demo):
@@ -33,22 +34,20 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 SERIES = {
     "A": {
-        "label":       "Series 92",         # display name in figure title
-        "csv":         "lhs_results_synth_4param_92.csv",
+        "label":       "Series 96 - Anchor A",         # display name in figure title
+        "csv":         "lhs_results_anchor_anchorA_96.csv",
         "true_values": {
-            "Ks_mult":          8.50,
             "kinemvelcoef":     4.50,
             "flowexp":          0.24,
             "channelroughness": 0.026,
         },
     },
     "B": {
-        "label":       "Series 94",
-        "csv":         "lhs_results_synth_4param_94.csv",
+        "label":       "Series 96 - Anchor B",
+        "csv":         "lhs_results_anchor_anchorB_96.csv",
         "true_values": {
-            "Ks_mult":          8.50,
             "kinemvelcoef":     4.50,
-            "flowexp":          0.15,
+            "flowexp":          0.24,
             "channelroughness": 0.026,
         },
     },
@@ -63,7 +62,6 @@ SERIES = {
 # Parameters to include (must be columns in both CSVs).
 # Order here controls column order in the heatmap.
 PARAM_KEYS = [
-    "Ks_mult",
     "kinemvelcoef",
     "flowexp",
     "channelroughness",
@@ -97,7 +95,6 @@ COMPARISON_SUBDIR = "Comparisons"
 # =======================================================================
 
 PARAM_META = {
-    "Ks_mult":          {"label": PARAM_KEY["Ks_mult"]["symbol"],          "color": "#2a9d8f", "family": "Soil"},
     "kinemvelcoef":     {"label": PARAM_KEY["kinemvelcoef"]["symbol"],     "color": "#e76f51", "family": "Routing"},
     "flowexp":          {"label": PARAM_KEY["flowexp"]["symbol"],           "color": "#e9c46a", "family": "Routing"},
     "channelroughness": {"label": PARAM_KEY["channelroughness"]["symbol"], "color": "#457b9d", "family": "Routing"},
@@ -138,7 +135,7 @@ def load_series(cfg: dict) -> pd.DataFrame:
     if not path.exists():
         raise FileNotFoundError(
             f"CSV not found: {path}\n"
-            f"Run the corresponding run_lhs_synth_4param*.py first."
+            f"Run run_lhs_anchor_cvrn.py first."
         )
     df = pd.read_csv(path)
     print(f"  Loaded {len(df)} rows from {path.name}")
