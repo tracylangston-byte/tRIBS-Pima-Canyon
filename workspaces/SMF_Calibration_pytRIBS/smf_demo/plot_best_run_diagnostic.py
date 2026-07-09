@@ -18,11 +18,20 @@ Panel layout
     [Row 1, Col 1] Hydrograph — event window (17:30-21:00), obs vs sim
     [Row 1, Col 2] KGE component bar chart — r, alpha, beta vs ideal (1.0)
     [Row 2, Col 1] Hydrograph — full recession (full event window)
-    [Row 2, Col 2] Metrics summary table — KGE, NSE, PBIAS, RMSE, peak Q, timing error
+    [Row 2, Col 2] Metrics summary table — KGE, NSE, PBIAS, peak Q, timing error
     [Row 3, Col 1] Residuals — (sim - obs) through event window
     [Row 3, Col 2] Volume comparison — cumulative obs vs sim through event
 
 The figure is designed to be dropped directly into a presentation or report.
+
+======================================================================
+UPDATED -- metric consolidation
+======================================================================
+RMSE removed from the console summary print and the metrics table.
+RMSE is a deterministic monotonic function of NSE for any fixed observed
+event (NSE = 1 - n*RMSE^2/SS_tot with SS_tot constant per event) --
+confirmed Spearman r = -1.000 in both S93 and S96 anchor data. NSE is
+already shown in both places, so RMSE added no information.
 """
 
 import pandas as pd
@@ -73,7 +82,7 @@ run_id   = best["run_id"]
 
 print(f"Best run: {run_id}")
 print(f"  KGE={best['kge']:.3f}  NSE={best['nse']:.3f}  "
-      f"PBIAS={best['pbias_pct']:+.1f}%  RMSE={best['rmse_m3s']:.2f} m3/s")
+      f"PBIAS={best['pbias_pct']:+.1f}%")
 print(f"  Ks={best['Ks_mult']:.2f}x  cv={best['kinemvelcoef']:.2f}  "
       f"r={best['flowexp']:.3f}  n={best['channelroughness']:.4f}")
 
@@ -215,7 +224,6 @@ table_data = [
     ["KGE",                    f"{best['kge']:.3f}"],
     ["NSE",                    f"{best['nse']:.3f}"],
     ["PBIAS",                  f"{best['pbias_pct']:+.1f}%"],
-    ["RMSE",                   f"{best['rmse_m3s']:.2f} m\u00b3/s"],
     ["Obs peak",               f"{best['obs_peak_m3s']:.1f} m\u00b3/s"],
     ["Sim peak",               f"{best['sim_peak_m3s']:.1f} m\u00b3/s"],
     ["Peak timing error",      f"{peak_timing_min:+.0f} min" if not np.isnan(peak_timing_min) else "n/a"],

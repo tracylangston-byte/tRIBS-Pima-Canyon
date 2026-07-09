@@ -19,6 +19,17 @@ Usage (run from the smf_demo directory):
 
 Produces 5 figures saved to:
     calibration_work/03_comparisons/sensitivity_plots/{param_name}/
+
+======================================================================
+UPDATED -- metric consolidation
+======================================================================
+RMSE removed from fig1's sensitivity-curve overlay (was plotted alongside
+KGE/NSE/PBIAS). RMSE is a deterministic monotonic function of NSE for a
+fixed observed event (NSE = 1 - n*RMSE^2/SS_tot, SS_tot constant per
+event) -- confirmed Spearman r = -1.000 in both S93 and S96 anchor data.
+NSE is already on the same plot, so RMSE was a redundant fourth line
+that duplicated NSE's shape while adding a second normalization scheme
+to read.
 """
 
 import argparse
@@ -247,7 +258,6 @@ def main():
     vals    = param_df["swept_value"].values
     kge     = param_df["kge"].values
     nse     = param_df["nse"].values
-    rmse    = param_df["rmse_m3s"].values
     pbias   = param_df["pbias_pct"].values
     timing  = param_df["peak_timing_error_hr"].values
     sim_pk  = param_df["sim_peak_m3s"].values
@@ -265,9 +275,6 @@ def main():
     fig, ax = plt.subplots(figsize=(9, 5))
     ax.plot(vals, kge,  color="#1f77b4", linewidth=2, marker="o", markersize=5, label="KGE")
     ax.plot(vals, nse,  color="#ff7f0e", linewidth=2, marker="s", markersize=5, label="NSE")
-    ax.plot(vals, rmse / rmse.max(),
-            color="#d62728", linewidth=2, marker="^", markersize=5,
-            label=f"RMSE (normalized, max={rmse.max():.1f} m³/s)")
     ax.plot(vals, pbias / 100,
             color="#9467bd", linewidth=2, marker="D", markersize=5,
             label="PBIAS / 100")

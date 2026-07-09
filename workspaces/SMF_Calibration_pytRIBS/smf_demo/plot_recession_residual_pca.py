@@ -39,13 +39,21 @@ Section 7 — PCA on phase-specific metrics
          Ks_mult / flowexp / channelroughness
   fig27  Biplot: scores + loading vectors overlaid, colored by recession_residual
 
-Section 8 — Parameter projection heatmap
-  fig28  Heatmap of Pearson r between each swept parameter and each PC score.
-         Rows = parameters (Ks, cv, r, n); columns = PC1 … PCk.
-         Mirrors the metric-loadings heatmap style; answers "which parameter
-         drives each PC?" in the same visual idiom.
-         Note: these are parameter–PC-score correlations, not eigenvector
-         loadings — bounded [−1, +1] by construction.
+======================================================================
+UPDATED -- metric consolidation
+======================================================================
+volume_error_pct was removed from PCA_PHASE_METRICS and
+RESIDUAL_DRIVER_CANDIDATES. It is an exact algebraic duplicate of
+pbias_pct for any single fixed-event run (obs_volume_m3 is one constant
+per series, so pbias_pct and volume_error_pct are the same formula --
+confirmed r=1.000 in both S93 and S96 anchor data, differences at
+float-precision noise only). Leaving both in the PCA input matrix
+double-weighted that one shared volume-bias direction in the covariance
+matrix, inflating whichever PC captured it. Dead label-dict entries for
+volume_error_pct, peak_error_m3s, and rmse_m3s (also eliminated
+project-wide as duplicates of peak_error_pct and nse respectively) were
+removed from the label_for() fallback dict since this script never
+referenced those two anyway.
 
 Methodology notes
 -----------------
@@ -122,6 +130,12 @@ DEFAULT_TRUE_VALUES_BY_SERIES = {
 }
 
 # Phase-specific metrics for PCA — see methodology note in module docstring
+# UPDATED: volume_error_pct removed. It is an exact algebraic duplicate of
+# pbias_pct (both are computed from the same fixed obs_volume_m3 for a given
+# event, r=1.000 in both S93 and S96 anchor data) -- including both in a PCA
+# double-weights that one shared direction in the covariance matrix and
+# inflates whichever PC captures the volume-bias axis. See metric-redundancy
+# analysis (S93/S96 correlation check) for the full writeup.
 PCA_PHASE_METRICS = [
     "first_arrival_error_min",
     "rising_limb_steepness_ratio",
@@ -129,18 +143,21 @@ PCA_PHASE_METRICS = [
     "peak_error_pct",
     "peak_timing_error_hr",
     "pbias_pct",
-    "volume_error_pct",
     "duration_above_thresh_error_min",
 ]
 
 # Candidates tested for correlation with the recession residual.
 # flowexp is deliberately excluded — it is the axis we fitted out.
+# UPDATED: volume_error_pct removed (exact duplicate of pbias_pct, r=1.000
+# given a fixed obs_volume_m3 -- see metric-redundancy analysis). kge_beta
+# is kept: it is algebraically the same signal too (kge_beta = 1+pbias/100)
+# but is retained here since it's the standard KGE-decomposition term used
+# throughout the rest of the codebase (fig9-style r/alpha/beta panels).
 RESIDUAL_DRIVER_CANDIDATES = [
     "Ks_mult",
     "kinemvelcoef",
     "channelroughness",
     "pbias_pct",
-    "volume_error_pct",
     "kge_beta",
     "kge_alpha",
     "kge_r",
@@ -177,9 +194,7 @@ def label_for(col: str) -> str:
         "recession_residual":              "Recession residual",
         "abs_recession_residual":          "|Recession residual|",
         "pbias_pct":                       "PBIAS (%)",
-        "volume_error_pct":                "Volume error (%)",
         "peak_error_pct":                  "Peak error (%)",
-        "peak_error_m3s":                  "Peak error (m\u00b3/s)",
         "peak_timing_error_hr":            "Peak timing error (hr)",
         "duration_above_thresh_error_min": "Duration above thresh error (min)",
         "first_arrival_error_min":         "First arrival error (min)",
@@ -187,7 +202,6 @@ def label_for(col: str) -> str:
         "time_to_peak_from_exc_min":       "Time to peak from exc (min)",
         "kge":                             "KGE",
         "nse":                             "NSE",
-        "rmse_m3s":                        "RMSE (m\u00b3/s)",
         "kge_r":                           "KGE r",
         "kge_alpha":                       "KGE \u03b1",
         "kge_beta":                        "KGE \u03b2",
@@ -1069,93 +1083,6 @@ def plot_pca_biplot(
 
 
 # ======================================================================
-# SECTION 8 — Fig 28: parameter projection heatmap
-# ======================================================================
-def plot_pca_param_projection_heatmap(
-    scores_df: pd.DataFrame, explained_df: pd.DataFrame,
-    plot_dir: Path, series: str,
-) -> None:
-    """
-    fig28 — Heatmap of Pearson r between each swept parameter and each PC score.
-
-    Rows = swept parameters (Ks, cv, r, n).
-    Columns = PC1 … PCk (components explaining ≥2 % variance, up to 6).
-    Color = diverging RdBu_r, vmin=−1, vmax=+1 — same scheme as the
-            metric-loadings heatmap in plot_series_residual_pca.py.
-
-    These are parameter–PC-score *correlations*, not eigenvector loadings.
-    The distinction matters: a near-unity value for (Ks, PC2) means Ks
-    almost perfectly explains the variance PC2 captures in metric space,
-    but it does not mean Ks has a unit coefficient in the eigenvector.
-    """
-    # ---- Determine which PCs to show --------------------------------
-    all_pcs = [c for c in explained_df["component"] if c in scores_df.columns]
-    if not all_pcs:
-        return
-    evr = explained_df.set_index("component")["explained_variance_ratio"]
-    pc_names = [p for p in all_pcs if evr.get(p, 0) >= 0.02][:6]
-    if not pc_names:                        # fallback: first 4
-        pc_names = all_pcs[:4]
-
-    # ---- Parameters present in scores_df ---------------------------
-    params = [p for p in PARAM_KEYS if p in scores_df.columns]
-    if not params:
-        return
-
-    # ---- Correlation matrix (n_params × n_pcs) ---------------------
-    corr = np.full((len(params), len(pc_names)), np.nan)
-    for i, param in enumerate(params):
-        x = scores_df[param].to_numpy(dtype=float)
-        for j, pc in enumerate(pc_names):
-            y = scores_df[pc].to_numpy(dtype=float)
-            corr[i, j] = safe_pearson(x, y)
-
-    param_labels = [label_for(p) for p in params]
-    pc_labels = [
-        f"{pc}\n({evr[pc] * 100:.1f}%)"
-        for pc in pc_names
-    ]
-
-    # ---- Figure layout ---------------------------------------------
-    fig_w = max(6.0, 1.4 * len(pc_names) + 2.5)
-    fig_h = max(3.5, 0.75 * len(params) + 1.8)
-    fig, ax = plt.subplots(figsize=(fig_w, fig_h))
-
-    im = ax.imshow(corr, cmap="RdBu_r", vmin=-1, vmax=1, aspect="auto")
-    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    cbar.set_label("Pearson r", fontsize=10)
-
-    ax.set_xticks(range(len(pc_names)))
-    ax.set_xticklabels(pc_labels, fontsize=10)
-    ax.set_yticks(range(len(params)))
-    ax.set_yticklabels(param_labels, fontsize=11)
-
-    # Cell annotations
-    for i in range(len(params)):
-        for j in range(len(pc_names)):
-            val = corr[i, j]
-            if np.isfinite(val):
-                txt_color = "white" if abs(val) > 0.65 else "black"
-                ax.text(j, i, f"{val:+.2f}",
-                        ha="center", va="center",
-                        fontsize=10, color=txt_color, fontweight="bold")
-
-    # White grid lines between cells
-    for xp in np.arange(-0.5, len(pc_names), 1):
-        ax.axvline(xp, color="white", linewidth=0.9)
-    for yp in np.arange(-0.5, len(params), 1):
-        ax.axhline(yp, color="white", linewidth=0.9)
-
-    ax.set_title(
-        f"Series {series}: which parameters drive each PCA component?\n"
-        f"Pearson r (parameter vs PC score) — phase-specific metric PCA",
-        fontsize=11,
-    )
-    fig.tight_layout()
-    save_fig(fig, plot_dir / "fig28_pca_param_projection.png")
-
-
-# ======================================================================
 # CONSOLE SUMMARY
 # ======================================================================
 def print_console_summary(
@@ -1309,7 +1236,6 @@ def main() -> None:
     plot_pca_scree(explained_df, plot_dir, series)
     plot_pca_scores_multipanel(scores_df, explained_df, plot_dir, series)
     plot_pca_biplot(scores_df, loadings_df, explained_df, plot_dir, series)
-    plot_pca_param_projection_heatmap(scores_df, explained_df, plot_dir, series)
 
     print_console_summary(driver_df, explained_df, loadings_df, series)
     print(f"Done. All outputs in:\n  {plot_dir}\n  {summary_dir}")

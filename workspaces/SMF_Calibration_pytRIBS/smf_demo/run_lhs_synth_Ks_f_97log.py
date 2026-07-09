@@ -1,43 +1,45 @@
 """
-run_lhs_synth_4param.py
-=======================
-Latin Hypercube Sampling sweep for the Series 95 synthetic inversion
-experiment. Scores simulated hydrographs against a synthetic truth
-.qout file (not the real gauge) to test parameter identifiability and
-equifinality.
+run_lhs_synth_Ks_f_97log.py
+=============================
+Series 97log -- Joint Ks_mult x f_RS_abs LHS sweep, scored against SYNTHETIC
+TRUTH, with cv/r/n pinned at the confirmed truth values throughout.
 
-TO CHANGE, ADJUST SERIES NUMBER AND PARAMETER VALUES & SWEPT VALUES
+This is a log-f-stratified variant of run_lhs_synth_Ks_f_97.py. The ONLY
+methodological difference is in generate_lhs_samples(): f_RS_abs (the
+y-axis parameter in plot_lhs_Ks_f_97.py) is now stratified into n equal-
+width bins in log10-space rather than linear space, then exponentiated
+back. Ks_mult stays linearly stratified.
 
-Parameters swept (4 free dimensions): DOCSTRING NOT ADJUSTED FOR SERIES 95
-    Ks_mult:          7.5 – 9.5   (true = 8.5,  at 50th percentile of range)
-    kinemvelcoef:     2.5 – 6.5   (true = 4.5,  at 50th percentile of range)
-    flowexp:          0.18 – 0.35 (true = 0.24, at 37th percentile of range)
-    channelroughness: 0.02 – 0.04 (true = 0.026, at 30th percentile of range)
+Why: f_RS_abs spans 0.003-0.05 (>1 order of magnitude). Under linear
+stratification, the low-f region -- where the PBIAS=0 valley floor and
+the Series 96 anchors (f=0.0075, f=0.011) actually live -- gets compressed
+into a handful of bins, while the sparser high-f region (0.03-0.05) gets
+the same bin density despite being less scientifically interesting. Log
+stratification gives proportionally even coverage on both sides of the
+valley floor instead.
 
-Fixed (not swept):
-    f_RS_abs: 0.020 mm^-1   (RS soil conductivity decay)
+Output is written to a SEPARATE file (lhs_results_synth_Ks_f_97log.csv)
+and uses a separate run_id/category prefix (97log / 97log_lhs_synth_Ks_f)
+so this sweep's runs never collide with or overwrite the original linear
+Series 97 sweep -- both result sets stay on disk side by side for direct
+comparison of linear- vs log-stratified sampling density.
 
-Truth exclusion:
-    Any LHS sample whose four parameter values match the truth values
-    within TRUTH_TOL = 1e-6 is skipped automatically. The truth run
-    (SMF_20140812_60_Ks8p5x) was generated separately and must not
-    appear in the inversion ensemble.
-
-KGE ceiling:
-    The self-score of the truth run against itself is KGE = 0.912 due
-    to resampling asymmetry between sim (.mean()) and obs
-    (.interpolate()). Interpret top runs by parameter proximity to
-    truth, not by KGE approaching 1.0. A run scoring near 0.91 with
-    parameters near truth is a successful recovery.
-
-Series: 95
-Output: calibration_work/03_comparisons/summary_tables/lhs_results_synth_4param_91.csv
+REQUIRES exactly one *.qout file in calibration_work/synth_truth/ before
+running (this activates SYNTHETIC TRUTH MODE automatically inside
+run_sensitivity_single.py). The script checks this itself at startup and
+will refuse to run otherwise -- see the safety check in main().
 
 Usage (run from the smf_demo directory):
-    python run_lhs_synth_4param.py              # 50 samples, seed=42
-    python run_lhs_synth_4param.py --n 100      # recommended
-    python run_lhs_synth_4param.py --seed 99    # different seed
-    python run_lhs_synth_4param.py --skip_existing  # resume interrupted run
+    python run_lhs_synth_Ks_f_97log.py                  # 200 samples, seed=42
+    python run_lhs_synth_Ks_f_97log.py --n 400           # more samples
+    python run_lhs_synth_Ks_f_97log.py --seed 7           # different seed
+    python run_lhs_synth_Ks_f_97log.py --skip_existing    # resume interrupted run
+
+Output:
+    calibration_work/03_comparisons/summary_tables/lhs_results_synth_Ks_f_97log.csv
+
+Plotting: 
+    plot_lhs_Ks_f_97.py
 """
 
 import argparse
@@ -54,85 +56,85 @@ import run_sensitivity_single as runner
 from pytRIBS.classes import Project, Soil, Land, Met, Model
 
 # ------------------------------------------------------------------
-# LHS PARAMETER RANGES
-# True value must be interior to [lo, hi] — not at or within 10% of
-# either boundary.
-# ------------------------------------------------------------------
-LHS_PARAMS = {
-    "Ks_mult":          {"lo": 12.0,  "hi": 18.0},   # true = 15.0  (50th pct)
-    "kinemvelcoef":     {"lo": 2.5,  "hi": 6.5},   # true = 4.5  (50th pct)
-    "flowexp":          {"lo": 0.10, "hi": 0.35},  # true = 0.24 (37th pct)
-    "channelroughness": {"lo": 0.01, "hi": 0.10},  # true = 0.026 (30th pct)
-}
-
-# Fixed — not swept
-F_RS_ABS_FIXED = 0.020   # mm^-1
-
-# Series metadata
-LHS_SERIES   = "95"
-LHS_CATEGORY = "95_lhs_synth_inversion"
-
-# ------------------------------------------------------------------
-# TRUTH EXCLUSION GUARD
-# Samples matching these values within TRUTH_TOL are skipped.
+# CONFIRMED SYNTHETIC TRUTH VALUES (verified via md5 checksum,
+# 2026-07-06). cv/r/n are PINNED at these values for every run in this
+# sweep; Ks_mult/f_RS_abs are the two swept parameters.
 # ------------------------------------------------------------------
 TRUTH_VALUES = {
     "Ks_mult":          8.5,
+    "f_RS_abs":         0.020,
     "kinemvelcoef":     4.5,
     "flowexp":          0.24,
     "channelroughness": 0.026,
 }
 TRUTH_TOL = 1e-6
 
+PINNED_CV = TRUTH_VALUES["kinemvelcoef"]
+PINNED_R  = TRUTH_VALUES["flowexp"]
+PINNED_N  = TRUTH_VALUES["channelroughness"]
 
-def is_truth_run(ks, cv, r, n):
-    """Return True if all four values match the truth within TRUTH_TOL."""
-    return (abs(ks - TRUTH_VALUES["Ks_mult"])          < TRUTH_TOL and
-            abs(cv - TRUTH_VALUES["kinemvelcoef"])      < TRUTH_TOL and
-            abs(r  - TRUTH_VALUES["flowexp"])           < TRUTH_TOL and
-            abs(n  - TRUTH_VALUES["channelroughness"])  < TRUTH_TOL)
+# ------------------------------------------------------------------
+# LHS PARAMETER RANGES
+#
+# Ks_mult: linearly stratified, same range as Series 97 (3-11x).
+#
+# f_RS_abs: LOG-stratified (scale="log") -- see module docstring. Same
+#   bounds as Series 97 (0.003-0.05), padded on both sides of the fitted
+#   valley-floor curve so the grid captures the response-surface "walls"
+#   as well as the floor. Truth (0.020) stays well interior to the bounds
+#   in log-space too (log10(0.003)=-2.52, log10(0.020)=-1.70,
+#   log10(0.05)=-1.30).
+# ------------------------------------------------------------------
+LHS_PARAMS = {
+    "Ks_mult":  {"lo": 3.0,   "hi": 11.0, "scale": "linear"},  # true = 8.5
+    "f_RS_abs": {"lo": 0.003, "hi": 0.05, "scale": "log"},     # true = 0.020 (y-axis, log-stratified)
+}
+
+LHS_SERIES   = "97log"
+LHS_CATEGORY = "97log_lhs_synth_Ks_f"
+
+
+def is_truth_run(ks_mult, f_rs_abs):
+    """True only if the sampled (Ks, f) point happens to equal true values
+    exactly. cv/r/n are always pinned at truth in this script, so matching
+    Ks/f alone is sufficient to identify (and exclude) the truth point."""
+    return (abs(ks_mult - TRUTH_VALUES["Ks_mult"])   < TRUTH_TOL and
+            abs(f_rs_abs - TRUTH_VALUES["f_RS_abs"]) < TRUTH_TOL)
 
 
 # ------------------------------------------------------------------
-# LHS SAMPLE GENERATION
+# LHS SAMPLE GENERATION -- linear stratification by default, log
+# stratification when a parameter's bounds dict sets scale="log".
 # ------------------------------------------------------------------
 def generate_lhs_samples(n, params, seed=None):
-    """
-    Generate n Latin Hypercube samples across the parameter ranges.
-    Each parameter range is divided into n equal intervals; one sample
-    is drawn uniformly from each interval, then independently shuffled
-    across parameters (ensuring full marginal coverage).
-
-    Returns a DataFrame with one column per parameter and n rows.
-    """
     rng     = np.random.default_rng(seed)
     samples = {}
     for param, bounds in params.items():
-        lo, hi    = bounds["lo"], bounds["hi"]
-        intervals = np.linspace(lo, hi, n + 1)
-        points    = rng.uniform(intervals[:-1], intervals[1:])
+        lo, hi = bounds["lo"], bounds["hi"]
+        scale  = bounds.get("scale", "linear")
+
+        if scale == "log":
+            log_lo, log_hi = np.log10(lo), np.log10(hi)
+            intervals  = np.linspace(log_lo, log_hi, n + 1)
+            log_points = rng.uniform(intervals[:-1], intervals[1:])
+            points     = 10 ** log_points
+        else:
+            intervals = np.linspace(lo, hi, n + 1)
+            points    = rng.uniform(intervals[:-1], intervals[1:])
+
         rng.shuffle(points)
         samples[param] = points
     return pd.DataFrame(samples)
 
 
-# ------------------------------------------------------------------
-# RUN ID CONSTRUCTION
-# ------------------------------------------------------------------
-def build_lhs_run_id(ks_mult, kinemvelcoef, flowexp, channelroughness):
-    """Build a compact, human-readable run ID for a 4-parameter LHS point."""
+def build_lhs_run_id(ks_mult, f_rs_abs):
     ks_lbl = builder.value_to_label(ks_mult)
-    cv_lbl = builder.value_to_label(kinemvelcoef)
-    r_lbl  = builder.value_to_label(flowexp)
-    n_lbl  = builder.value_to_label(channelroughness)
-    change_tested = f"Ks{ks_lbl}x_cv{cv_lbl}_r{r_lbl}_n{n_lbl}"
+    f_lbl  = builder.value_to_label(f_rs_abs)
+    change_tested = f"synthKsflog_Ks{ks_lbl}x_f{f_lbl}"
     run_id = f"{builder.LOCATION}_{builder.EVENT_DATE}_{LHS_SERIES}_{change_tested}"
     return run_id, change_tested
 
 
-# ------------------------------------------------------------------
-# SKIP CHECK (resume support)
-# ------------------------------------------------------------------
 def csv_already_exists(run_id, calib_dir):
     csv_path = (calib_dir / "03_comparisons" / "csv_exports"
                 / f"{run_id}_compare_obs_sim.csv")
@@ -151,20 +153,10 @@ def load_existing_results(out_path):
 
 
 # ------------------------------------------------------------------
-# BUILD + RUN ONE LHS POINT
+# BUILD + RUN ONE (Ks_mult, f_RS_abs) POINT -- cv/r/n pinned at truth
 # ------------------------------------------------------------------
-def build_and_run_lhs(ks_mult, kinemvelcoef, flowexp, channelroughness):
-    """
-    Build one tRIBS input file for a 4-parameter LHS point and run it.
-
-    Patches builder.BASELINE temporarily; reverts on exit regardless of
-    success or failure. f_RS_abs is pinned at F_RS_ABS_FIXED.
-    OPINTRVL is set to 0.0833 hr (5-minute output) for all runs.
-
-    Returns a metrics dict from run_sensitivity_single.run_and_score().
-    """
-    run_id, change_tested = build_lhs_run_id(
-        ks_mult, kinemvelcoef, flowexp, channelroughness)
+def build_and_run_lhs(ks_mult, f_rs_abs):
+    run_id, change_tested = build_lhs_run_id(ks_mult, f_rs_abs)
 
     script_dir = Path.cwd()
     project_root = (script_dir.parent
@@ -184,12 +176,13 @@ def build_and_run_lhs(ks_mult, kinemvelcoef, flowexp, channelroughness):
 
     original_baseline = builder.BASELINE.copy()
     builder.BASELINE["Ks_mult"]          = ks_mult
-    builder.BASELINE["kinemvelcoef"]     = kinemvelcoef
-    builder.BASELINE["flowexp"]          = flowexp
-    builder.BASELINE["channelroughness"] = channelroughness
+    builder.BASELINE["f_RS_abs"]         = f_rs_abs
+    builder.BASELINE["kinemvelcoef"]     = PINNED_CV
+    builder.BASELINE["flowexp"]          = PINNED_R
+    builder.BASELINE["channelroughness"] = PINNED_N
 
     try:
-        baseline    = builder.BASELINE
+        baseline = builder.BASELINE
 
         proj = Project(os.getcwd(), builder.LOCATION, builder.EPSG)
 
@@ -229,7 +222,14 @@ def build_and_run_lhs(ks_mult, kinemvelcoef, flowexp, channelroughness):
                 soil_cls['m']      = soil_params['m']
                 soil_cls['PsiB']   = soil_params['PsiB']
                 soil_cls['n']      = soil_params['n']
-                soil_cls['f'] = F_RS_ABS_FIXED if cid == '1' else soil_params['f']
+                # f: RS soil (ID '1') uses this sample's f_rs_abs; all
+                # others use baseline soil-table f. Applied UNCONDITIONALLY
+                # (not gated on a swept-param-name check) -- see the
+                # build_sensitivity_run.py bug found during the Series 96
+                # session, where a gated version silently discarded this
+                # override whenever f_RS_abs wasn't itself the "swept"
+                # parameter name.
+                soil_cls['f'] = f_rs_abs if cid == '1' else soil_params['f']
             else:
                 print(f"  WARNING: Soil ID {cid} not in lookup; using fallback defaults.")
                 soil_cls['Ks'] = 10.0; soil_cls['thetaS'] = 0.4; soil_cls['thetaR'] = 0.05
@@ -265,22 +265,22 @@ def build_and_run_lhs(ks_mult, kinemvelcoef, flowexp, channelroughness):
         model.inputdatafile['value'] = "../smf_init_data/mesh/SMF_mesh"
         model.inputtime['value']     = 0
         model.optbedrock['value']    = 1
-        model.optsnow['value']       = 0
+        model.optsnow['value']       = 0      # CRITICAL: must stay 0 -- SMF.in has this wrong
         model.optlanduse['value']    = 0
 
         model.optpercolation['value']      = baseline["optpercolation"]
         model.channelconductivity['value'] = baseline["channelconductivity_mmhr"] / 3.6e6
         model.channelporosity['value']     = baseline["channelporosity"]
 
-        model.kinemvelcoef['value']      = kinemvelcoef
-        model.flowexp['value']           = flowexp
-        model.channelroughness['value']  = channelroughness
+        model.kinemvelcoef['value']      = PINNED_CV
+        model.flowexp['value']           = PINNED_R
+        model.channelroughness['value']  = PINNED_N
         model.channelwidthcoeff['value'] = baseline["channelwidthcoeff"]
 
         model.startdate['value']   = builder.START_DATE
         model.runtime['value']     = builder.RUNTIME_HOURS
         model.rainintrvl['value']  = builder.RAIN_INTERVAL
-        model.opintrvl['value']    = 0.0833   # 5-minute output (new in S92)
+        model.opintrvl['value']    = 0.0833   # 5-minute output
 
         input_file_abs    = run_input_dir   / f"{run_id}.in"
         log_file_abs      = log_dir         / f"{run_id}.log"
@@ -300,9 +300,8 @@ def build_and_run_lhs(ks_mult, kinemvelcoef, flowexp, channelroughness):
 
         model.write_input_file(input_file)
 
-        print(f"  Ks={ks_mult:.3f}x  cv={kinemvelcoef:.3f}  r={flowexp:.3f}  "
-              f"n={channelroughness:.4f}  "
-              f"(RS Ks={builder.SOIL_PARAM_LOOKUP['1']['Ks'] * ks_mult:.2f} mm/hr)")
+        print(f"  Ks={ks_mult:.3f}x  f={f_rs_abs:.4f}  "
+              f"(cv={PINNED_CV} r={PINNED_R} n={PINNED_N} -- pinned at truth)")
 
         run_config = {
             "location":                  builder.LOCATION,
@@ -317,15 +316,15 @@ def build_and_run_lhs(ks_mult, kinemvelcoef, flowexp, channelroughness):
             "event_start":               builder.EVENT_START,
             "event_end":                 builder.EVENT_END,
             "Ks_mult":                   ks_mult,
-            "f_RS_abs":                  F_RS_ABS_FIXED,
+            "f_RS_abs":                  f_rs_abs,
             "As_value":                  baseline["As_value"],
             "Au_value":                  baseline["Au_value"],
             "optpercolation":            baseline["optpercolation"],
             "channelconductivity_mmhr":  baseline["channelconductivity_mmhr"],
             "channelporosity":           baseline["channelporosity"],
-            "kinemvelcoef":              kinemvelcoef,
-            "flowexp":                   flowexp,
-            "channelroughness":          channelroughness,
+            "kinemvelcoef":              PINNED_CV,
+            "flowexp":                   PINNED_R,
+            "channelroughness":          PINNED_N,
             "channelwidthcoeff":         baseline["channelwidthcoeff"],
             "input_file":                input_file,
             "log_file":                  log_file,
@@ -333,7 +332,7 @@ def build_and_run_lhs(ks_mult, kinemvelcoef, flowexp, channelroughness):
             "csv_export_dir":            os.path.relpath(csv_export_dir,      script_dir),
             "plot_export_dir":           os.path.relpath(plot_export_dir,     script_dir),
             "summary_export_dir":        os.path.relpath(summary_export_dir,  script_dir),
-            "swept_param":               "lhs_synth_4param",
+            "swept_param":               "lhs_synth_Ks_f_log",
             "swept_value":               ks_mult,
         }
 
@@ -346,11 +345,11 @@ def build_and_run_lhs(ks_mult, kinemvelcoef, flowexp, channelroughness):
     metrics = runner.run_and_score()
 
     metrics["Ks_mult"]          = ks_mult
-    metrics["kinemvelcoef"]     = kinemvelcoef
-    metrics["flowexp"]          = flowexp
-    metrics["channelroughness"] = channelroughness
-    metrics["f_RS_abs"]         = F_RS_ABS_FIXED
-    metrics["swept_param"]      = "lhs_synth_4param"
+    metrics["f_RS_abs"]         = f_rs_abs
+    metrics["kinemvelcoef"]     = PINNED_CV
+    metrics["flowexp"]          = PINNED_R
+    metrics["channelroughness"] = PINNED_N
+    metrics["swept_param"]      = "lhs_synth_Ks_f_log"
 
     return metrics
 
@@ -360,11 +359,13 @@ def build_and_run_lhs(ks_mult, kinemvelcoef, flowexp, channelroughness):
 # ------------------------------------------------------------------
 def main():
     parser = argparse.ArgumentParser(
-        description="Series 95 synthetic inversion LHS sweep — 4 free parameters.")
-    parser.add_argument("--n", type=int, default=50,
-                        help="Number of LHS samples (default: 50)")
+        description="Series 97log -- joint Ks_mult x f_RS_abs LHS sweep "
+                    "against synthetic truth, cv/r/n pinned at truth values, "
+                    "f_RS_abs log-stratified.")
+    parser.add_argument("--n", type=int, default=200,
+                        help="Number of LHS samples (default: 200)")
     parser.add_argument("--seed", type=int, default=42,
-                        help="Random seed for reproducibility (default: 42)")
+                        help="Random seed (default: 42)")
     parser.add_argument("--skip_existing", action="store_true",
                         help="Skip samples whose compare CSV already exists")
     args = parser.parse_args()
@@ -375,58 +376,58 @@ def main():
     calib_dir   = project_root / "calibration_work"
     summary_dir = calib_dir / "03_comparisons" / "summary_tables"
     summary_dir.mkdir(parents=True, exist_ok=True)
-    out_path = summary_dir / "lhs_results_synth_4param_95.csv"
+
+    # ------------------------------------------------------------------
+    # SAFETY CHECK: confirm synthetic-truth mode will actually activate.
+    # ------------------------------------------------------------------
+    synth_dir = calib_dir / "synth_truth"
+    qout_files = list(synth_dir.glob("*.qout")) if synth_dir.exists() else []
+    if len(qout_files) != 1:
+        raise RuntimeError(
+            f"Expected exactly one *.qout file in {synth_dir} to activate "
+            f"synthetic-truth mode, found {len(qout_files)}: "
+            f"{[f.name for f in qout_files]}. Move any extra files into "
+            f"synth_truth_archive/ before running this sweep, or results "
+            f"won't be scored against the truth you expect."
+        )
+    print(f"Synthetic truth mode confirmed active: {qout_files[0].name}")
 
     samples = generate_lhs_samples(args.n, LHS_PARAMS, seed=args.seed)
 
-    print(f"\n{'='*65}")
-    print(f"LHS sweep — Series {LHS_SERIES} — Synthetic Inversion — 4 free params")
-    print(f"  ({args.n} samples, seed={args.seed})")
-    print(f"  Ks_mult:          {LHS_PARAMS['Ks_mult']['lo']:.2f} - "
-          f"{LHS_PARAMS['Ks_mult']['hi']:.2f}x        [true = {TRUTH_VALUES['Ks_mult']}]")
-    print(f"  kinemvelcoef:     {LHS_PARAMS['kinemvelcoef']['lo']:.2f} - "
-          f"{LHS_PARAMS['kinemvelcoef']['hi']:.2f}          [true = {TRUTH_VALUES['kinemvelcoef']}]")
-    print(f"  flowexp:          {LHS_PARAMS['flowexp']['lo']:.2f} - "
-          f"{LHS_PARAMS['flowexp']['hi']:.2f}          [true = {TRUTH_VALUES['flowexp']}]")
-    print(f"  channelroughness: {LHS_PARAMS['channelroughness']['lo']:.3f} - "
-          f"{LHS_PARAMS['channelroughness']['hi']:.3f}         [true = {TRUTH_VALUES['channelroughness']}]")
-    print(f"  f_RS_abs:         {F_RS_ABS_FIXED} mm^-1    [FIXED]")
-    print(f"  OPINTRVL:         0.0833 hr (5-min output)  [new in S92]")
-    print(f"  KGE ceiling:      ~0.912 (resampling asymmetry; see docstring)")
-    print(f"  Output: {out_path.name}")
-    print(f"{'='*65}\n")
-
+    out_path = summary_dir / f"lhs_results_synth_Ks_f_{LHS_SERIES}.csv"
     existing_df      = load_existing_results(out_path)
     existing_run_ids = (set(existing_df["run_id"].values)
                         if not existing_df.empty else set())
 
-    all_results = []
+    results = []
     if not existing_df.empty:
-        all_results.extend(existing_df.to_dict("records"))
+        results.extend(existing_df.to_dict("records"))
 
-    completed   = 0
-    skipped     = 0
-    excluded    = 0
-    failed      = 0
+    print(f"\n{'='*70}")
+    print(f"LHS sweep -- Series {LHS_SERIES} -- Ks_mult x f_RS_abs vs SYNTHETIC TRUTH")
+    print(f"  ({args.n} samples, seed={args.seed})")
+    print(f"  Ks_mult:  {LHS_PARAMS['Ks_mult']['lo']:.1f} - "
+          f"{LHS_PARAMS['Ks_mult']['hi']:.1f}x        [true = {TRUTH_VALUES['Ks_mult']}]  (linear)")
+    print(f"  f_RS_abs: {LHS_PARAMS['f_RS_abs']['lo']:.4f} - "
+          f"{LHS_PARAMS['f_RS_abs']['hi']:.4f}   [true = {TRUTH_VALUES['f_RS_abs']}]  (LOG-stratified)")
+    print(f"  PINNED:   cv={PINNED_CV}  r={PINNED_R}  n={PINNED_N}  (truth values)")
+    print(f"{'='*70}\n")
+
+    completed, skipped, excluded, failed = 0, 0, 0, 0
     sweep_start = time.time()
 
     for i, row in samples.iterrows():
-        ks_mult          = row["Ks_mult"]
-        kinemvelcoef     = row["kinemvelcoef"]
-        flowexp          = row["flowexp"]
-        channelroughness = row["channelroughness"]
+        ks_mult  = row["Ks_mult"]
+        f_rs_abs = row["f_RS_abs"]
 
-        # --- Truth exclusion guard ---
-        if is_truth_run(ks_mult, kinemvelcoef, flowexp, channelroughness):
-            print(f"\n[{i+1:>3}/{args.n}]  EXCLUDED: sample matches truth values "
-                  f"exactly — skipped by design.")
+        if is_truth_run(ks_mult, f_rs_abs):
+            print(f"[{i+1:>3}/{args.n}]  EXCLUDED: matches truth exactly.")
             excluded += 1
             continue
 
-        run_id, _ = build_lhs_run_id(ks_mult, kinemvelcoef, flowexp, channelroughness)
+        run_id, _ = build_lhs_run_id(ks_mult, f_rs_abs)
 
-        print(f"\n[{i+1:>3}/{args.n}]  Ks={ks_mult:.3f}x  cv={kinemvelcoef:.3f}  "
-              f"r={flowexp:.3f}  n={channelroughness:.4f}")
+        print(f"\n[{i+1:>3}/{args.n}]  Ks={ks_mult:.3f}x  f={f_rs_abs:.4f}")
         print(f"         -> {run_id}")
 
         if args.skip_existing and csv_already_exists(run_id, calib_dir):
@@ -438,22 +439,21 @@ def main():
                     df_m = pd.read_csv(metrics_file)
                     m    = df_m.iloc[0].to_dict()
                     m["Ks_mult"]          = ks_mult
-                    m["kinemvelcoef"]     = kinemvelcoef
-                    m["flowexp"]          = flowexp
-                    m["channelroughness"] = channelroughness
-                    m["f_RS_abs"]         = F_RS_ABS_FIXED
-                    all_results.append(m)
+                    m["f_RS_abs"]         = f_rs_abs
+                    m["kinemvelcoef"]     = PINNED_CV
+                    m["flowexp"]          = PINNED_R
+                    m["channelroughness"] = PINNED_N
+                    results.append(m)
                 except Exception:
                     pass
             continue
 
         t0 = time.time()
         try:
-            metrics = build_and_run_lhs(ks_mult, kinemvelcoef, flowexp, channelroughness)
-            all_results = [r for r in all_results if r.get("run_id") != run_id]
-            all_results.append(metrics)
+            metrics = build_and_run_lhs(ks_mult, f_rs_abs)
+            results = [r for r in results if r.get("run_id") != run_id]
+            results.append(metrics)
             completed += 1
-
         except Exception as e:
             print(f"  FAILED: {run_id}")
             print(f"  Error:  {e}")
@@ -467,39 +467,37 @@ def main():
             eta_min  = (avg_time * remaining) / 60
             print(f"  Run time: {elapsed/60:.1f} min  |  ETA: {eta_min:.0f} min remaining")
 
-        # Incremental save after every completed run
-        if all_results:
-            pd.DataFrame(all_results).to_csv(out_path, index=False)
+        if results:
+            pd.DataFrame(results).to_csv(out_path, index=False)
 
-    print(f"\n{'='*65}")
-    print(f"Sweep complete:  {completed} ran,  {skipped} skipped,  "
-          f"{excluded} excluded (truth),  {failed} failed")
-    print(f"{'='*65}\n")
+    print(f"\nSweep complete: {completed} ran, {skipped} skipped, "
+          f"{excluded} excluded, {failed} failed")
 
-    if all_results:
-        final_df = pd.DataFrame(all_results).sort_values("kge", ascending=False)
+    if results:
+        final_df = pd.DataFrame(results).sort_values("kge", ascending=False)
         final_df.to_csv(out_path, index=False)
-        print(f"Results saved to:\n  {out_path}")
-        print(f"  Total runs in file: {len(final_df)}")
+        print(f"Saved: {out_path.name}  ({len(final_df)} rows)")
 
-        print(f"\nKGE summary (ceiling ~0.912):")
-        print(f"  Min:    {final_df['kge'].min():.3f}")
-        print(f"  Median: {final_df['kge'].median():.3f}")
-        print(f"  Max:    {final_df['kge'].max():.3f}")
+        # ------------------------------------------------------------------
+        # Coverage check, same intent as Series 97 -- flags whether the
+        # high-Ks region (>=9x) ended up sparsely sampled.
+        # ------------------------------------------------------------------
+        high_ks_n = final_df[final_df["Ks_mult"] >= 9.0].shape[0]
+        print(f"\nCoverage check: {high_ks_n} of {len(final_df)} points have "
+              f"Ks_mult >= 9.0 (the region bisection couldn't resolve).")
+        if high_ks_n < 20:
+            print("  NOTE: this region looks sparse -- consider a supplemental "
+                  "targeted batch (e.g. rerun with LHS_PARAMS Ks_mult lo=9.0) "
+                  "before drawing conclusions about the high-Ks sign reversal.")
 
-        print(f"\n  Top 10 runs by KGE:")
-        cols = ["run_id", "Ks_mult", "kinemvelcoef", "flowexp",
-                "channelroughness", "kge", "nse", "pbias_pct",
-                "peak_timing_error_hr"]
-        available = [c for c in cols if c in final_df.columns]
-        print(final_df[available].head(10).to_string(index=False,
-                                                      float_format="%.4f"))
-
-        print(f"\n  Parameter-KGE correlations (Pearson r):")
-        for param in ["Ks_mult", "kinemvelcoef", "flowexp", "channelroughness"]:
-            if param in final_df.columns:
-                r = final_df[param].corr(final_df["kge"])
-                print(f"    {param:<22s}  r = {r:+.3f}")
+        # ------------------------------------------------------------------
+        # Coverage check for the low-f region (<0.007) -- this is the band
+        # log-stratification was specifically meant to densify relative to
+        # the original linear Series 97 sweep.
+        # ------------------------------------------------------------------
+        low_f_n = final_df[final_df["f_RS_abs"] < 0.007].shape[0]
+        print(f"Coverage check: {low_f_n} of {len(final_df)} points have "
+              f"f_RS_abs < 0.007 (near-anchor-A/B region).")
     else:
         print("No results to save.")
 

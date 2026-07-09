@@ -1,36 +1,56 @@
 """
-plot_lhs_synth_4param.py
-========================
-Generates all diagnostic figures from the Series 95 synthetic inversion
-LHS sweep. Includes true value reference lines on all 1D response plots
-and pairwise scatter panels to assess parameter identifiability.
+plot_lhs_synth_4param_series.py
+================================
+Generates all diagnostic figures from a 4-parameter synthetic inversion
+LHS sweep (series 91 or 92). Includes true value reference lines on all
+1D response plots and pairwise scatter panels to assess parameter
+identifiability.
 
-TO USE, CHANGE ALL INCIDENTS OF SERIES NUMBER & TRUE_VALUES DICTIONARY
+Switch series by editing ACTIVE_SERIES below (one line).
 
 Usage (run from the smf_demo directory):
-    python plot_lhs_synth_4param.py
+    python plot_lhs_synth_4param_series.py
 
 Produces 9 figures saved to:
-    calibration_work/03_comparisons/sensitivity_plots/Series95_SynthInversion/
+    calibration_work/03_comparisons/sensitivity_plots/{SERIES_LABEL}/
 
 Figure list
 -----------
-    fig1_hydrograph_envelope_all.png   — All runs: envelope + median + best
-    fig2_hydrograph_envelope_kge0.png  — KGE > 0 runs only
-    fig3_correlation_bar.png           — Pearson r of each param vs KGE
-    fig4_parallel_coordinates.png      — 4 params as vertical axes, colored by KGE
-    fig5_pairwise_scatter.png          — 6-panel pairwise scatter, colored by KGE
-    fig6_kge_vs_each_param.png         — 4-panel KGE vs each param + true value line
-    fig7_pbias_vs_kge.png              — PBIAS vs KGE scatter
-    fig8_top15_table.png               — Top-15 runs by KGE
-    fig9_kge_components_vs_ks.png      — KGE r/alpha/beta decomposition vs Ks
+    fig1_hydrograph_envelope_all.png   -- All runs: envelope + median + best
+    fig2_hydrograph_envelope_kge0.png  -- KGE > 0 runs only
+    fig3_correlation_bar.png           -- Pearson r of each param vs KGE
+    fig4_parallel_coordinates.png      -- 4 params as vertical axes, colored by KGE
+    fig5_pairwise_scatter.png          -- 6-panel pairwise scatter, colored by KGE
+    fig6_kge_vs_each_param.png         -- 4-panel KGE vs each param + true value line
+    fig7_pbias_vs_kge.png              -- PBIAS vs KGE scatter
+    fig8_top15_table.png               -- Top-15 runs by KGE
+    fig9_kge_components_vs_ks.png      -- KGE r/alpha/beta decomposition vs Ks
 
 KGE ceiling note
 ----------------
-The self-score of the truth run is KGE = 0.912 due to resampling
-asymmetry between sim (.mean()) and obs (.interpolate()). The ceiling
-annotation is drawn on Fig 6 and Fig 7. Interpret recovery as top runs
-clustering near the true value lines, not as KGE approaching 1.0.
+The self-score of the truth run is KGE = 0.912 (both series share the same
+resampling-asymmetry ceiling between sim .mean() and obs .interpolate()).
+The ceiling annotation is drawn on Fig 6 and Fig 7. Interpret recovery as
+top runs clustering near the true value lines, not as KGE approaching 1.0.
+
+======================================================================
+UPDATED / CONSOLIDATED -- see notes below
+======================================================================
+This script merges two near-identical files:
+    - plot_lhs_synth_4param.py     (series 91)
+    - plot_lhs_synth_4param_92.py  (series 92, changes channelroughness
+                                     LHS range -- reflected in the input
+                                     CSV, not in this plotting script)
+A diff of the two originals showed only the CONFIG block (RESULTS_CSV /
+SERIES_LABEL) and title strings differed -- the entire figure-generation
+body was byte-identical. Along the way this also fixes a stale docstring
+in plot_lhs_synth_4param_92.py, which said figures were saved to
+".../Series91_SynthInversion/" even though the code correctly used
+"Series92_SynthInversion" -- a copy-paste artifact in the comment only,
+not a functional bug, but worth not carrying forward.
+
+The old files should be deleted/archived once this replacement is
+verified against a saved figure set from each series.
 """
 
 import pandas as pd
@@ -43,26 +63,48 @@ from pathlib import Path
 
 from parameter_key import PARAM_KEY
 
-# =======================================================================
-# CONFIG — edit these two lines to switch between series
-# =======================================================================
-RESULTS_CSV  = "lhs_results_synth_4param_95.csv"
-SERIES_LABEL = "Series95_SynthInversion"
-# =======================================================================
+# ======================================================================
+# SERIES PRESETS
+# ======================================================================
+SERIES_PRESETS = {
+    "91": dict(
+        results_csv="lhs_results_synth_4param_91.csv",
+        series_label="Series91_SynthInversion",
+        series_title_prefix="Series 91",
+    ),
+    "92": dict(
+        results_csv="lhs_results_synth_4param_92.csv",
+        series_label="Series92_SynthInversion",
+        series_title_prefix="Series 92",
+    ),
+}
+
+# ======================================================================
+# CONFIG -- edit this one line to switch series
+# ======================================================================
+ACTIVE_SERIES = "92"
+# ======================================================================
+
+if ACTIVE_SERIES not in SERIES_PRESETS:
+    raise ValueError(f"ACTIVE_SERIES must be one of {list(SERIES_PRESETS)}, got {ACTIVE_SERIES!r}")
+
+cfg          = SERIES_PRESETS[ACTIVE_SERIES]
+RESULTS_CSV  = cfg["results_csv"]
+SERIES_LABEL = cfg["series_label"]
 
 EVENT_LABEL      = "SMF Aug 12, 2014  |  Synthetic Inversion"
 EVENT_CROP_START = "2014-08-12 17:30"
 EVENT_CROP_END   = "2014-08-12 21:00"
 
-# KGE ceiling from truth self-score (resampling asymmetry)
+# KGE ceiling from truth self-score (resampling asymmetry) -- same for both series
 KGE_CEILING = 0.912
 
-# True parameter values — drawn as red dashed lines on Fig 6
+# True parameter values -- drawn as red dashed lines on Fig 6
 TRUE_VALUES = {
-    "Ks_mult":          15.0,   # baseline 8.50
-    "kinemvelcoef":     4.50,   # baseline 4.50
-    "flowexp":          0.24,   # baseline 0.24
-    "channelroughness": 0.026,    # baseline 0.026
+    "Ks_mult":          8.50,
+    "kinemvelcoef":     4.50,
+    "flowexp":          0.24,
+    "channelroughness": 0.026,
 }
 
 # -----------------------------------------------------------------------
@@ -101,7 +143,7 @@ print(f"  {len(df)} runs after dropping NaN rows")
 
 ks_lo = df["Ks_mult"].min()
 ks_hi = df["Ks_mult"].max()
-SERIES_TITLE = (f"Series 95  |  Synthetic Inversion  |  "
+SERIES_TITLE = (f"{cfg['series_title_prefix']}  |  Synthetic Inversion  |  "
                 f"Ks {ks_lo:.1f}-{ks_hi:.1f}x  |  KGE ceiling={KGE_CEILING}")
 
 print(f"Series: {SERIES_TITLE}")
@@ -125,8 +167,7 @@ print(f"  Best KGE:  {best_kge:.3f}  (ceiling = {KGE_CEILING})")
 print(f"  KGE range: {kge_vals.min():.3f} to {kge_vals.max():.3f}")
 print(f"  PBIAS range: {pbias_vals.min():.1f}% to {pbias_vals.max():.1f}%")
 
-# Swept parameter metadata
-# Labels sourced from parameter_key.py — update display names there, not here
+# Swept parameter metadata -- labels sourced from parameter_key.py
 PARAM_META = {
     "Ks_mult":          {"label": PARAM_KEY["Ks_mult"]["display_name"],          "vals": ks_vals, "fmt": "{:.2f}x"},
     "kinemvelcoef":     {"label": PARAM_KEY["kinemvelcoef"]["display_name"],     "vals": cv_vals, "fmt": "{:.2f}"},
@@ -136,7 +177,7 @@ PARAM_META = {
 PARAM_KEYS   = list(PARAM_META.keys())
 PARAM_LABELS = [PARAM_META[k]["label"] for k in PARAM_KEYS]
 
-# KGE colormap — plasma; norm on 5th–95th percentile with clip
+# KGE colormap -- plasma; norm on 5th-95th percentile with clip
 KGE_CMAP = plt.get_cmap("plasma")
 kge_p05  = np.percentile(kge_vals, 5)
 kge_p95  = np.percentile(kge_vals, 95)
@@ -183,7 +224,7 @@ for hdf in all_hydros.values():
         break
 
 if obs_series is None:
-    print("  WARNING: No observed series found — hydrograph figures will be skipped.")
+    print("  WARNING: No observed series found -- hydrograph figures will be skipped.")
 
 
 # -----------------------------------------------------------------------
@@ -192,7 +233,7 @@ if obs_series is None:
 def plot_hydrograph_envelope(hydros_subset, df_subset, title_suffix, filename,
                               envelope_color, median_color, filter_label):
     if obs_series is None or len(hydros_subset) == 0:
-        print(f"  Skipping {filename} — insufficient data.")
+        print(f"  Skipping {filename} -- insufficient data.")
         return
 
     common_idx = obs_series.index
@@ -204,7 +245,7 @@ def plot_hydrograph_envelope(hydros_subset, df_subset, title_suffix, filename,
 
     sim_matrix  = sim_matrix.dropna(how="all")
     if sim_matrix.empty:
-        print(f"  Skipping {filename} — sim_matrix empty after dropna.")
+        print(f"  Skipping {filename} -- sim_matrix empty after dropna.")
         return
 
     sim_matrix  = sim_matrix.loc[EVENT_CROP_START:EVENT_CROP_END]
@@ -228,8 +269,6 @@ def plot_hydrograph_envelope(hydros_subset, df_subset, title_suffix, filename,
     ax.plot(sim_matrix.index, obs_cropped,
             color="black", linewidth=2.5, label="Synthetic truth")
 
-    # KGE ceiling annotation
-    ax.axhline(obs_cropped.max() * 0.0, color="none")
     ax.text(0.02, 0.97, f"KGE ceiling = {KGE_CEILING}",
             transform=ax.transAxes, fontsize=9, va="top",
             color="gray", style="italic")
@@ -237,9 +276,9 @@ def plot_hydrograph_envelope(hydros_subset, df_subset, title_suffix, filename,
     import matplotlib.dates as mdates
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
     ax.set_xlabel("Time (Aug 12, 2014)", fontsize=11)
-    ax.set_ylabel("Discharge (m³/s)", fontsize=11)
+    ax.set_ylabel("Discharge (m\u00b3/s)", fontsize=11)
     ax.set_title(
-        f"Hydrograph ensemble — {filter_label} {title_suffix}\n"
+        f"Hydrograph ensemble -- {filter_label} {title_suffix}\n"
         f"{SERIES_TITLE}  |  n={len(hydros_subset)}  |  {EVENT_LABEL}",
         fontsize=11)
     ax.legend(fontsize=9, facecolor="white", framealpha=0.9)
@@ -248,20 +287,20 @@ def plot_hydrograph_envelope(hydros_subset, df_subset, title_suffix, filename,
     save_fig(fig, filename)
 
 
-print("Figure 1: Hydrograph envelope — all runs")
+print("Figure 1: Hydrograph envelope -- all runs")
 plot_hydrograph_envelope(
     all_hydros, df,
-    title_suffix="— all runs",
+    title_suffix="-- all runs",
     filename="fig1_hydrograph_envelope_all.png",
     envelope_color="steelblue", median_color="navy",
     filter_label="All runs")
 
-print("Figure 2: Hydrograph envelope — KGE > 0 runs")
+print("Figure 2: Hydrograph envelope -- KGE > 0 runs")
 df_pos    = df[df["kge"] > 0].reset_index(drop=True)
 hydros_pos = {rid: all_hydros[rid] for rid in df_pos["run_id"] if rid in all_hydros}
 plot_hydrograph_envelope(
     hydros_pos, df_pos,
-    title_suffix="— KGE > 0 runs",
+    title_suffix="-- KGE > 0 runs",
     filename="fig2_hydrograph_envelope_kge0.png",
     envelope_color="darkorange", median_color="saddlebrown",
     filter_label="KGE > 0 runs")
@@ -286,7 +325,7 @@ for bar, val in zip(bars, correlations.values()):
             ha="left" if val >= 0 else "right", fontsize=9)
 ax.set_xlabel("Pearson r with KGE", fontsize=11)
 ax.set_title(
-    f"Parameter–KGE correlations — {SERIES_TITLE}\n"
+    f"Parameter-KGE correlations -- {SERIES_TITLE}\n"
     f"{EVENT_LABEL}  |  Green = positive, Red = negative",
     fontsize=11)
 ax.set_xlim(-1, 1)
@@ -313,7 +352,6 @@ for idx, row in df.iterrows():
     color = KGE_CMAP(KGE_NORM(row["kge"]))
     ax.plot(x_pos, vals_norm, color=color, alpha=0.4, linewidth=0.8)
 
-# True value lines
 for xi, key in enumerate(PARAM_KEYS):
     lo  = df[key].min()
     hi  = df[key].max()
@@ -327,7 +365,7 @@ ax.set_xticks(x_pos)
 ax.set_xticklabels(PARAM_LABELS, fontsize=10)
 ax.set_ylabel("Normalised parameter value", fontsize=10)
 ax.set_title(
-    f"Parallel coordinates — {SERIES_TITLE}\n"
+    f"Parallel coordinates -- {SERIES_TITLE}\n"
     f"Lines colored by KGE  |  Red tick = true value  |  {EVENT_LABEL}",
     fontsize=11)
 sm = plt.cm.ScalarMappable(cmap=KGE_CMAP, norm=KGE_NORM)
@@ -360,7 +398,6 @@ for pi, (k1, k2) in enumerate(pairs):
     ax.scatter(df[k1].iloc[best_idx], df[k2].iloc[best_idx],
                s=180, marker="*", color="white", edgecolors="black",
                linewidths=1.2, zorder=5, label=f"Best KGE={best_kge:.3f}")
-    # True value crosshair
     ax.axvline(TRUE_VALUES[k1], color="red", linewidth=1.5,
                linestyle="--", alpha=0.8, label="True value")
     ax.axhline(TRUE_VALUES[k2], color="red", linewidth=1.5,
@@ -374,16 +411,16 @@ for pi in range(n_pairs, len(axes_flat)):
     axes_flat[pi].set_visible(False)
 
 fig.suptitle(
-    f"Pairwise parameter scatter — {SERIES_TITLE}\n"
-    f"Colored by KGE  |  Red dashed = true values  |  ★ = best run",
+    f"Pairwise parameter scatter -- {SERIES_TITLE}\n"
+    f"Colored by KGE  |  Red dashed = true values  |  star = best run",
     fontsize=12)
 fig.tight_layout()
 save_fig(fig, "fig5_pairwise_scatter.png")
 
 
 # -----------------------------------------------------------------------
-# FIGURE 6: KGE vs each parameter — 1D response curves
-# Key identifiability figure — does rolling median peak near true value?
+# FIGURE 6: KGE vs each parameter -- 1D response curves
+# Key identifiability figure -- does rolling median peak near true value?
 # -----------------------------------------------------------------------
 print("Figure 6: KGE vs each parameter")
 
@@ -407,12 +444,10 @@ for ax, key in zip(axes, PARAM_KEYS):
     ax.plot(xs_sorted, ys_smooth, color="navy", linewidth=1.6,
             linestyle="--", alpha=0.7, label="Rolling median")
 
-    # True value line
     ax.axvline(TRUE_VALUES[key], color="red", linewidth=1.8,
                linestyle="--", alpha=0.85,
                label=f"True = {TRUE_VALUES[key]}")
 
-    # KGE ceiling line
     ax.axhline(KGE_CEILING, color="gray", linewidth=1.0,
                linestyle=":", alpha=0.7,
                label=f"KGE ceiling = {KGE_CEILING}")
@@ -424,9 +459,9 @@ for ax, key in zip(axes, PARAM_KEYS):
     ax.grid(alpha=0.25)
 
 fig.suptitle(
-    f"KGE response to each parameter — {SERIES_TITLE}  (n={len(df)})\n"
+    f"KGE response to each parameter -- {SERIES_TITLE}  (n={len(df)})\n"
     f"Red dashed = true value  |  Gray dotted = KGE ceiling ({KGE_CEILING})  "
-    f"|  f fixed at {0.020} mm⁻¹",
+    f"|  f fixed at {0.020} mm\u207b\u00b9",
     fontsize=12)
 fig.tight_layout()
 save_fig(fig, "fig6_kge_vs_each_param.png")
@@ -449,10 +484,10 @@ ax.axhline(0,           color="gray",  linewidth=0.8, linestyle=":",
            alpha=0.5, label="KGE = 0")
 ax.axhline(KGE_CEILING, color="gray",  linewidth=1.2, linestyle=":",
            alpha=0.8, label=f"KGE ceiling = {KGE_CEILING}")
-ax.set_xlabel("PBIAS (%)  — positive = over-predict volume", fontsize=11)
+ax.set_xlabel("PBIAS (%)  -- positive = over-predict volume", fontsize=11)
 ax.set_ylabel("KGE", fontsize=11)
 ax.set_title(
-    f"PBIAS vs KGE — {SERIES_TITLE}  (n={len(df)})\n"
+    f"PBIAS vs KGE -- {SERIES_TITLE}  (n={len(df)})\n"
     f"Points colored by Ks multiplier  |  {EVENT_LABEL}",
     fontsize=12)
 fig.colorbar(sc, ax=ax, label="Ks multiplier", fraction=0.046, pad=0.04)
@@ -517,7 +552,7 @@ for i in range(1, len(top15) + 1):
         tbl[i, j].set_facecolor(bg)
 
 ax.set_title(
-    f"Top 15 runs by KGE — {SERIES_TITLE}  (n={len(df)})\n"
+    f"Top 15 runs by KGE -- {SERIES_TITLE}  (n={len(df)})\n"
     f"True values: Ks=8.5x  cv=4.5  r=0.24  n=0.026  "
     f"|  KGE ceiling={KGE_CEILING}  |  Green row = best run",
     fontsize=11, pad=12)
@@ -535,7 +570,7 @@ kge_alpha_vals = df["kge_alpha"].values
 kge_beta_vals  = df["kge_beta"].values
 
 components = [
-    {"col": kge_r_vals,     "label": "r  (timing correlation)",    "ideal": 1.0, "color": "#2a9d8f"},
+    {"col": kge_r_vals,     "label": "r  (timing correlation)",     "ideal": 1.0, "color": "#2a9d8f"},
     {"col": kge_alpha_vals, "label": "\u03b1  (variability ratio)", "ideal": 1.0, "color": "#e9c46a"},
     {"col": kge_beta_vals,  "label": "\u03b2  (bias ratio)",        "ideal": 1.0, "color": "#e76f51"},
 ]
@@ -573,7 +608,7 @@ for ax, comp in zip(axes, components):
 sm = plt.cm.ScalarMappable(cmap=KGE_CMAP, norm=KGE_NORM)
 sm.set_array([])
 fig.suptitle(
-    f"KGE component decomposition vs Ks — {SERIES_TITLE}  (n={len(df)})\n"
+    f"KGE component decomposition vs Ks -- {SERIES_TITLE}  (n={len(df)})\n"
     f"{EVENT_LABEL}  |  Dashed navy = rolling median  |  Red = true Ks value",
     fontsize=12)
 fig.tight_layout(rect=[0, 0, 0.88, 1.0])

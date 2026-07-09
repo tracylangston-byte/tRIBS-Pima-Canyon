@@ -1,17 +1,34 @@
 """
-run_lhs_anchor_cvrn.py
-=======================
-Series 96 — cv/r/n identifiability check across volume-matched Ks_mult/f_RS_abs
-anchors.
+run_lhs_nanchor_cvrn_99.py
+===========================
+Series 99 — cv/r/n identifiability check across volume-matched Ks_mult/f_RS_abs
+anchors. Replaces the deprecated Series 98 N-anchor attempt.
 
 Purpose
 -------
-You've found (tonight, by manual bisection) 2-3 (Ks_mult, f_RS_abs) pairs that
-all reproduce the same synthetic-truth volume, with cv/r/n held at the truth
-values (4.5, 0.24, 0.026) during that search. This script asks the follow-up
-question: does the established cv/r/n identifiability picture (Ks >> r >> cv
-~= n) hold up regardless of which volume-matched anchor you're sitting at, or
-does the routing story change depending on which Ks/f pair you picked?
+Generalizes the validated Series 96 two-anchor design (run_lhs_anchor_cvrn.py,
+100/100 runs completed successfully) to 9 anchors spanning a much wider
+Ks_mult range (4.25x-8.5x) to test whether the established cv/r/n
+identifiability picture (Ks >> r >> cv ~= n) holds regardless of which
+volume-matched Ks/f anchor you're sitting at.
+
+Why this replaces Series 98: Series 98 selected its 4 new anchors purely by
+lowest |PBIAS| from a Ks x f LHS pool, with no runtime check. One of those
+anchors (Ks=6.226573x, f=0.010926) never completed a single run -- every
+(cv, r, n) draw there hung or ran 13-94+ min vs. a <1 min baseline, for
+reasons still unresolved (leading hypothesis: genuine tRIBS-side numerical
+behavior in an untested Ks~6.2x/f~0.011 region, not a script bug). Every
+anchor below was individually smoke-tested (single build+run at fixed
+params) via build_sensitivity_run.py + run_sensitivity_single.py before
+being trusted here -- EXCEPT the Ks=6.25x/f=0.0102 low-f branch, which sits
+almost exactly on top of the failed Series 98 point (Ks=6.226573x/
+f=0.010926, ~0.4% off in Ks, ~7% off in f) and is therefore deliberately
+EXCLUDED from ANCHORS below pending a dedicated timeout-safe probe (see
+probe_anchor_Ks6p25lo_99.py). A single smoke-tested default-param build does
+not clear this candidate: Series 98's failures were triggered by specific
+(cv, r, n) draws at that point, not by the point alone, so passing one
+default-param build doesn't rule out a hang once this script's full cv/r/n
+range is exercised there.
 
 Design choice: the SAME LHS sample set (same seed) is reused across every
 anchor, rather than drawing independent random samples per anchor. This makes
@@ -19,32 +36,62 @@ it a paired comparison -- for a given (cv, r, n) triple, you can directly
 compare metrics across anchors, rather than confounding anchor differences
 with sampling differences.
 
-Fill in ANCHORS below with your confirmed pairs before running.
+Timeout-safe execution (added after the Ks6p25lo probe):
+Every other script in this project, including the original Series 96
+version of this design, calls tRIBS via a blocking `os.system(...)` inside
+the same Python process, with no timeout -- if tRIBS hangs, the whole
+script hangs with it, indefinitely. The Ks6p25lo probe showed this isn't
+just a theoretical risk: 10/12 draws at that neighboring point hung, and
+running unattended overnight across 9 anchors x 50 draws means a single
+hang would otherwise stall the entire batch with no automatic recovery.
+This script instead runs run_sensitivity_single.py as a SEPARATE subprocess
+in its own process group (build_only() writes the .in/config, then
+run_with_timeout() launches and waits on it), with a hard wall-clock
+timeout (default 300s = 5 min, well above the <1 min baseline but well
+below the 13-94+ min hangs actually seen). On timeout, the whole process
+group (python -> shell -> tRIBS binary) is killed together, logged as a
+HANG, and the sweep moves on to the next draw.
+
+Corruption safeguard (also added after the Ks6p25lo probe): the probe
+surfaced a second, more insidious failure mode at that same point -- one
+draw's tRIBS process actually crashed (SIGSEGV, exit code 139) partway
+through, but run_sensitivity_single.py doesn't check the tRIBS exit code
+before scoring, so it silently wrote a "successful" metrics row from
+truncated/garbage output. This script now scans each run's captured output
+for tRIBS's own "WARNING: tRIBS may have failed" message and treats any hit
+as a FAILED run (excluded from the anchor's results CSV, logged separately)
+even if run_sensitivity_single.py itself exited 0.
 
 Usage (run from the smf_demo directory):
-    python run_lhs_anchor_cvrn.py                  # 50 samples/anchor, seed=42
-    python run_lhs_anchor_cvrn.py --n 100          # more samples per anchor
-    python run_lhs_anchor_cvrn.py --seed 99        # different (shared) seed
-    python run_lhs_anchor_cvrn.py --skip_existing  # resume an interrupted run
+    python run_lhs_nanchor_cvrn_99.py                  # 50 samples/anchor, seed=42
+    python run_lhs_nanchor_cvrn_99.py --n 100          # more samples per anchor
+    python run_lhs_nanchor_cvrn_99.py --seed 99        # different (shared) seed
+    python run_lhs_nanchor_cvrn_99.py --skip_existing  # resume an interrupted run
+    python run_lhs_nanchor_cvrn_99.py --timeout 600    # more generous per-run timeout
 
 Requires calibration_work/synth_truth/ to contain the truth .qout file for
 Ks_mult=8.5, f_RS_abs=0.020, kinemvelcoef=4.5, flowexp=0.24,
-channelroughness=0.026 (see note in module docstring below about
-regenerating it fresh rather than trusting an older archived file, since
-BASELINE in build_sensitivity_run.py has since drifted from these truth
-values).
+channelroughness=0.026 (regenerate fresh rather than trusting an older
+archived file if BASELINE in build_sensitivity_run.py has drifted).
 
 Output: one CSV per anchor, plus a combined CSV with all anchors stacked:
-    calibration_work/03_comparisons/summary_tables/lhs_results_anchor_<label>_96.csv
-    calibration_work/03_comparisons/summary_tables/lhs_results_anchor_ALL_96.csv
+    calibration_work/03_comparisons/summary_tables/lhs_results_anchor_<label>_99.csv
+    calibration_work/03_comparisons/summary_tables/lhs_results_anchor_ALL_99.csv
+    calibration_work/03_comparisons/summary_tables/lhs_results_anchor_FAILED_99.csv
+        (audit trail of every HANG/FAILED draw across all anchors, for
+        deciding whether any anchor needs the same probe treatment as
+        Ks6p25lo got)
 
-Update 7.7.26: Having trouble getting this script (in run_lhs_nanchor_cvrn_98.py
-and probe_old_script_new_anchor.py) to run with different Ks and f values. 
-Running a test case with n (runs) = 2
+To add Ks6p25lo once probe_anchor_Ks6p25lo_99.py clears it: uncomment its
+entry in ANCHORS below and rerun with --skip_existing (all other anchors'
+completed runs will be skipped, only the new anchor gets run).
 """
 
 import argparse
 import os
+import sys
+import signal
+import subprocess
 import time
 import json
 import shutil
@@ -53,39 +100,35 @@ import pandas as pd
 from pathlib import Path
 
 import build_sensitivity_run as builder
-import run_sensitivity_single as runner
 from pytRIBS.classes import Project, Soil, Land, Met, Model
 
 # ------------------------------------------------------------------
-# ANCHORS -- fill these in with tonight's confirmed volume-matched pairs.
+# ANCHORS -- all volume-matched (PBIAS near 0) Ks_mult/f_RS_abs pairs.
 # "label" must be filesystem-safe (used in filenames) and unique.
+#
+# anchorA/anchorB: reused from Series 96 (100/100 runs validated).
+# Ks4p25 ... Ks8p25hi: new candidates from a fresh Ks x f sensitivity sweep,
+#   each individually smoke-tested (single build+run) before being trusted
+#   here. Where a Ks position has both a low-f and high-f volume-matched
+#   solution (the Ks-f equifinality "swoosh"), both are included.
+# Ks6p25lo: DELIBERATELY EXCLUDED -- see module docstring. Uncomment only
+#   after probe_anchor_Ks6p25lo_99.py clears it.
 # ------------------------------------------------------------------
 ANCHORS = [
-    # {"label": "truth",   "Ks_mult": 8.5, "f_RS_abs": 0.020},  # optional: the
-    #                                                            # original truth
-    #                                                            # pair, for a
-    #                                                            # clean reference
-    #                                                            # column (S92
-    #                                                            # already covers
-    #                                                            # this -- only
-    #                                                            # include if you
-    #                                                            # want it in the
-    #                                                            # SAME csv/seed
-    #                                                            # as the new
-    #                                                            # anchors)
-    {"label": "anchorA", "Ks_mult": 5.0, "f_RS_abs": 0.0075},
-    {"label": "anchorB", "Ks_mult": 6.5, "f_RS_abs": 0.011},
-    # {"label": "anchorC", "Ks_mult": None, "f_RS_abs": None}, # optional 3rd --
-    #                                                          # deferred: Ks=9.5
-    #                                                          # and Ks=10.5 both
-    #                                                          # showed anomalous
-    #                                                          # (reversed-sign)
-    #                                                          # f-PBIAS response
-    #                                                          # and no volume
-    #                                                          # match was found;
-    #                                                          # both anchors here
-    #                                                          # are below true
-    #                                                          # Ks=8.5 as a result
+    {"label": "anchorA",  "Ks_mult": 5.0,  "f_RS_abs": 0.0075},   # S96
+    {"label": "anchorB",  "Ks_mult": 6.5,  "f_RS_abs": 0.011},    # S96
+    {"label": "Ks4p25",   "Ks_mult": 4.25, "f_RS_abs": 0.0055},   # PBIAS -0.50%
+    {"label": "Ks5p25",   "Ks_mult": 5.25, "f_RS_abs": 0.008},    # PBIAS  0%
+    # {"label": "Ks6p25lo", "Ks_mult": 6.25, "f_RS_abs": 0.0102}, # PBIAS 0%
+    #                                                              # EXCLUDED pending probe --
+    #                                                              # ~0.4%/~7% away from the
+    #                                                              # Series 98 hang point
+    #                                                              # (Ks=6.226573x/f=0.010926)
+    {"label": "Ks6p25hi", "Ks_mult": 6.25, "f_RS_abs": 0.0403},   # PBIAS +0.30%
+    {"label": "Ks7p25lo", "Ks_mult": 7.25, "f_RS_abs": 0.0125},   # PBIAS +0.30%
+    {"label": "Ks7p25hi", "Ks_mult": 7.25, "f_RS_abs": 0.0288},   # PBIAS +1.40%
+    {"label": "Ks8p25lo", "Ks_mult": 8.25, "f_RS_abs": 0.0155},   # PBIAS +0.60%
+    {"label": "Ks8p25hi", "Ks_mult": 8.25, "f_RS_abs": 0.0188},   # PBIAS -0.20%
 ]
 
 # ------------------------------------------------------------------
@@ -111,8 +154,8 @@ TRUTH_VALUES = {
 }
 TRUTH_TOL = 1e-6
 
-LHS_SERIES   = "96"
-LHS_CATEGORY = "96_lhs_anchor_cvrn"
+LHS_SERIES   = "99"
+LHS_CATEGORY = "99_lhs_nanchor_cvrn"
 
 
 def is_truth_run(ks_mult, f_rs_abs, cv, r, n):
@@ -175,9 +218,13 @@ def load_existing_results(out_path):
 
 
 # ------------------------------------------------------------------
-# BUILD + RUN ONE (anchor, cv, r, n) POINT
+# BUILD ONLY -- writes the .in file + current_run_config.json for one
+# (anchor, cv, r, n) point. Mirrors the original build_and_run_lhs() from
+# run_lhs_anchor_cvrn.py exactly, but stops short of calling
+# run_sensitivity_single.py in-process -- that happens afterward, as a
+# separate, killable subprocess (see run_with_timeout).
 # ------------------------------------------------------------------
-def build_and_run_lhs(anchor_label, ks_mult, f_rs_abs, kinemvelcoef, flowexp, channelroughness):
+def build_only(anchor_label, ks_mult, f_rs_abs, kinemvelcoef, flowexp, channelroughness):
     run_id, change_tested = build_lhs_run_id(
         anchor_label, ks_mult, f_rs_abs, kinemvelcoef, flowexp, channelroughness)
 
@@ -359,17 +406,52 @@ def build_and_run_lhs(anchor_label, ks_mult, f_rs_abs, kinemvelcoef, flowexp, ch
     finally:
         builder.BASELINE = original_baseline
 
-    metrics = runner.run_and_score()
+    return run_id, summary_export_dir
 
-    metrics["anchor_label"]     = anchor_label
-    metrics["Ks_mult"]          = ks_mult
-    metrics["f_RS_abs"]         = f_rs_abs
-    metrics["kinemvelcoef"]     = kinemvelcoef
-    metrics["flowexp"]          = flowexp
-    metrics["channelroughness"] = channelroughness
-    metrics["swept_param"]      = f"lhs_anchor_{anchor_label}"
 
-    return metrics
+# ------------------------------------------------------------------
+# RUN WITH TIMEOUT -- executes run_sensitivity_single.py as a separate
+# subprocess in its own process group, so a hang can be killed cleanly
+# (python -> shell -> tRIBS binary all die together as one unit) instead
+# of blocking this script forever the way an in-process os.system() call
+# would. Uses communicate(timeout=...) rather than a manual readline loop
+# so a genuine hang can't leave the pipe buffer deadlocking the child.
+#
+# Also scans the captured output for tRIBS's own "WARNING: tRIBS may have
+# failed" message (printed by run_sensitivity_single.py when the tRIBS
+# exit code is non-zero) -- the Ks6p25lo probe found a case where tRIBS
+# itself crashed (SIGSEGV) but run_sensitivity_single.py still wrote a
+# metrics row from the truncated output, so a clean returncode=0 alone
+# isn't sufficient evidence of a good run.
+# ------------------------------------------------------------------
+def run_with_timeout(timeout_sec):
+    proc = subprocess.Popen(
+        [sys.executable, "run_sensitivity_single.py"],
+        cwd=Path.cwd(),
+        start_new_session=True,   # own process group -> killable as a unit
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    t0 = time.time()
+    try:
+        stdout, _ = proc.communicate(timeout=timeout_sec)
+        timed_out = False
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        stdout, _ = proc.communicate()   # drain pipes after kill
+        timed_out = True
+    elapsed = time.time() - t0
+
+    if stdout:
+        print(stdout, end="" if stdout.endswith("\n") else "\n")
+
+    tribs_warning = bool(stdout) and "WARNING: tRIBS may have failed" in stdout
+    returncode    = None if timed_out else proc.returncode
+    return returncode, elapsed, timed_out, tribs_warning
 
 
 # ------------------------------------------------------------------
@@ -377,13 +459,17 @@ def build_and_run_lhs(anchor_label, ks_mult, f_rs_abs, kinemvelcoef, flowexp, ch
 # ------------------------------------------------------------------
 def main():
     parser = argparse.ArgumentParser(
-        description="Series 96 -- cv/r/n LHS sweep repeated across volume-matched anchors.")
+        description="Series 99 -- cv/r/n LHS sweep repeated across volume-matched anchors.")
     parser.add_argument("--n", type=int, default=50,
                         help="Number of LHS samples per anchor (default: 50)")
     parser.add_argument("--seed", type=int, default=42,
                         help="Random seed -- SAME seed used for every anchor by design (default: 42)")
     parser.add_argument("--skip_existing", action="store_true",
                         help="Skip samples whose compare CSV already exists")
+    parser.add_argument("--timeout", type=int, default=300,
+                        help="Per-run hard timeout in seconds (default: 300 = 5 min, "
+                             "well above the <1 min baseline, well below the "
+                             "13-94+ min hangs seen at the neighboring Ks6p25lo point)")
     args = parser.parse_args()
 
     unfilled = [a["label"] for a in ANCHORS if a["Ks_mult"] is None or a["f_RS_abs"] is None]
@@ -418,6 +504,8 @@ def main():
     print(f"{'='*70}\n")
 
     all_anchor_results = []
+    failed_log_rows    = []
+    failed_log_path    = summary_dir / f"lhs_results_anchor_FAILED_{LHS_SERIES}.csv"
 
     for anchor in ANCHORS:
         label    = anchor["label"]
@@ -433,7 +521,7 @@ def main():
         if not existing_df.empty:
             anchor_results.extend(existing_df.to_dict("records"))
 
-        completed, skipped, excluded, failed = 0, 0, 0, 0
+        completed, skipped, excluded, hung, failed = 0, 0, 0, 0, 0
         sweep_start = time.time()
 
         print(f"\n--- Anchor '{label}'  (Ks_mult={ks_mult}, f_RS_abs={f_rs_abs}) ---")
@@ -476,19 +564,65 @@ def main():
 
             t0 = time.time()
             try:
-                metrics = build_and_run_lhs(
+                run_id, summary_export_dir = build_only(
                     label, ks_mult, f_rs_abs, kinemvelcoef, flowexp, channelroughness)
-                anchor_results = [r for r in anchor_results if r.get("run_id") != run_id]
-                anchor_results.append(metrics)
-                completed += 1
+                returncode, elapsed, timed_out, tribs_warning = run_with_timeout(args.timeout)
+
+                if timed_out:
+                    status = "HANG"
+                elif returncode != 0 or tribs_warning:
+                    status = "FAILED"
+                else:
+                    status = "SUCCESS"
+
+                if status == "SUCCESS":
+                    metrics_file = summary_export_dir / f"{run_id}_metrics_summary.csv"
+                    metrics = pd.read_csv(metrics_file).iloc[0].to_dict()
+                    metrics["anchor_label"]     = label
+                    metrics["Ks_mult"]          = ks_mult
+                    metrics["f_RS_abs"]         = f_rs_abs
+                    metrics["kinemvelcoef"]     = kinemvelcoef
+                    metrics["flowexp"]          = flowexp
+                    metrics["channelroughness"] = channelroughness
+                    metrics["swept_param"]      = f"lhs_anchor_{label}"
+                    anchor_results = [r for r in anchor_results if r.get("run_id") != run_id]
+                    anchor_results.append(metrics)
+                    completed += 1
+                else:
+                    reason = "wall-clock timeout" if timed_out else (
+                        "tRIBS reported non-zero exit" if tribs_warning
+                        else f"run_sensitivity_single.py exited {returncode}")
+                    print(f"  {status}: {run_id}  ({reason})")
+                    if status == "HANG":
+                        hung += 1
+                    else:
+                        failed += 1
+                    failed_log_rows.append({
+                        "anchor_label": label, "run_id": run_id, "status": status,
+                        "reason": reason, "elapsed_min": elapsed / 60,
+                        "Ks_mult": ks_mult, "f_RS_abs": f_rs_abs,
+                        "kinemvelcoef": kinemvelcoef, "flowexp": flowexp,
+                        "channelroughness": channelroughness,
+                    })
+                    pd.DataFrame(failed_log_rows).to_csv(failed_log_path, index=False)
+
             except Exception as e:
-                print(f"  FAILED: {run_id}")
+                print(f"  FAILED (build error): {run_id}")
                 print(f"  Error:  {e}")
                 failed += 1
+                elapsed = time.time() - t0
+                failed_log_rows.append({
+                    "anchor_label": label, "run_id": run_id, "status": "BUILD_ERROR",
+                    "reason": str(e), "elapsed_min": elapsed / 60,
+                    "Ks_mult": ks_mult, "f_RS_abs": f_rs_abs,
+                    "kinemvelcoef": kinemvelcoef, "flowexp": flowexp,
+                    "channelroughness": channelroughness,
+                })
+                pd.DataFrame(failed_log_rows).to_csv(failed_log_path, index=False)
 
             elapsed       = time.time() - t0
             total_elapsed = time.time() - sweep_start
-            remaining     = args.n - completed - skipped - excluded - failed
+            remaining     = args.n - completed - skipped - excluded - hung - failed
             if completed > 0:
                 avg_time = total_elapsed / completed
                 eta_min  = (avg_time * remaining) / 60
@@ -498,7 +632,7 @@ def main():
                 pd.DataFrame(anchor_results).to_csv(out_path, index=False)
 
         print(f"\nAnchor '{label}' complete: {completed} ran, {skipped} skipped, "
-              f"{excluded} excluded, {failed} failed")
+              f"{excluded} excluded, {hung} hung, {failed} failed")
 
         if anchor_results:
             final_df = pd.DataFrame(anchor_results).sort_values("kge", ascending=False)
@@ -525,6 +659,11 @@ def main():
             corrs = {p: sub[p].corr(sub["kge"])
                      for p in ["kinemvelcoef", "flowexp", "channelroughness"]}
             print(f"  {label}: " + "  ".join(f"{p}={r:+.3f}" for p, r in corrs.items()))
+        if failed_log_rows:
+            print(f"\n{len(failed_log_rows)} HANG/FAILED draw(s) across all anchors -- "
+                  f"see {failed_log_path.name} for the full audit trail. If any single "
+                  f"anchor accumulates several of these, it may warrant the same "
+                  f"dedicated probe treatment Ks6p25lo got.")
         print(f"{'='*70}\n")
     else:
         print("No results to save.")
