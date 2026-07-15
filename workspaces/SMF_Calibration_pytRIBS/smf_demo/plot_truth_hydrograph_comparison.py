@@ -72,6 +72,14 @@ SERIES = [
         "lw":    2.0,
         "ls":    "-",
     },
+    {
+        "label": "truth100  |  Ks=7.0x, f=0.012",
+        "file":  calib_dir / "02_results" / "60_sensitivity" / "SMF_20140812_60_Ks7p0x_truth100"
+                 / "SMF_20140812_60_Ks7p0x_truth100_Outlet.qout",
+        "color": "#2E7D32",   # green
+        "lw":    2.5,
+        "ls":    "-",
+    },
 ]
 
 
@@ -168,7 +176,7 @@ ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
 ax.set_xlabel("Time (Aug 12, 2014)", fontsize=12)
 ax.set_ylabel("Discharge (m³/s)", fontsize=12)
 ax.set_title(
-    "SMF  |  Aug 12, 2014  |  Observed vs. Series 93–95 Synthetic Truth Hydrographs",
+    "SMF  |  Aug 12, 2014  |  Observed vs. New Truth Candidate (Ks=7.0x, f=0.012)",
     fontsize=12
 )
 ax.legend(fontsize=9.5, framealpha=0.88, loc="upper right")
@@ -178,7 +186,7 @@ fig.tight_layout()
 # -----------------------------------------------------------------------
 # SAVE
 # -----------------------------------------------------------------------
-out_path = plot_dir / "truth_hydrograph_comparison_S93_S94_S95.png"
+out_path = plot_dir / "truth_hydrograph_comparison_truth100.png"
 fig.savefig(out_path, dpi=150, bbox_inches="tight")
 print(f"\nSaved: {out_path}")
 plt.close(fig)

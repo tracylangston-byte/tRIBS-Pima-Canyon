@@ -32,6 +32,9 @@ RMSE is a deterministic monotonic function of NSE for any fixed observed
 event (NSE = 1 - n*RMSE^2/SS_tot with SS_tot constant per event) --
 confirmed Spearman r = -1.000 in both S93 and S96 anchor data. NSE is
 already shown in both places, so RMSE added no information.
+
+note: 7/9/26 - No current run scripts produce a CSV for this plotting script.
+
 """
 
 import pandas as pd

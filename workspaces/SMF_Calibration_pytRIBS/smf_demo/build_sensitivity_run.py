@@ -160,7 +160,7 @@ def get_run_category(series_str):
     return "40_multivariable"
 
 
-def build_input_file(param_name, value, overrides=None, tag=""):
+def build_input_file(param_name, value, overrides=None, tag="", gauge_sdf=None):
     """
     overrides : dict, optional
         Additional {param_name: value} pairs to pin away from BASELINE,
@@ -172,6 +172,12 @@ def build_input_file(param_name, value, overrides=None, tag=""):
         Suffix appended to run_id/change_tested (e.g. "volmatch") so these
         runs are distinguishable from true single-parameter sweeps that
         land in the same series folder.
+    gauge_sdf : str, optional
+        Override path (relative to the smf_demo directory) to the rain
+        gauge SDF, independent of param_name/value. Used to point at a
+        storm-magnitude-scaled forcing set (see scale_precip_forcing.py)
+        instead of the baseline ../smf_init_data/met/Master_Precip.sdf.
+        None falls back to the baseline path.
     """
     from pytRIBS.classes import Project, Soil, Land, Met, Model
     from pytRIBS.shared.inout import InOut
@@ -320,7 +326,7 @@ def build_input_file(param_name, value, overrides=None, tag=""):
     met = Met(meta=proj.meta)
     met.hydrometbasename['value'] = LOCATION
     met.hydrometstations['value'] = "../smf_init_data/met/Master_Met.sdf"
-    met.gaugestations['value']    = "../smf_init_data/met/Master_Precip.sdf"
+    met.gaugestations['value']    = gauge_sdf if gauge_sdf else "../smf_init_data/met/Master_Precip.sdf"
 
     # Model class
     model = Model(met=met, land=land, soil=soil, mesh=None, meta=proj.meta)
@@ -381,6 +387,7 @@ def build_input_file(param_name, value, overrides=None, tag=""):
         "rain_interval_hours":       RAIN_INTERVAL,
         "event_start":               EVENT_START,
         "event_end":                 EVENT_END,
+        "gauge_sdf":                 gauge_sdf if gauge_sdf else "../smf_init_data/met/Master_Precip.sdf",
         "Ks_mult":                   Ks_mult,
         "f_RS_abs":                  f_RS_abs,
         "As_value":                  As_value,
@@ -431,6 +438,10 @@ if __name__ == "__main__":
                         help="Override channelroughness (n), independent of --param")
     parser.add_argument("--tag", type=str, default="",
                         help="Optional suffix appended to run_id (e.g. 'volmatch')")
+    parser.add_argument("--gauge_sdf", type=str, default=None,
+                        help="Override path to rain gauge SDF (e.g. a storm-scaled "
+                             "forcing set from scale_precip_forcing.py), independent "
+                             "of --param. Defaults to the baseline Master_Precip.sdf.")
     args = parser.parse_args()
 
     overrides = {
@@ -439,4 +450,5 @@ if __name__ == "__main__":
         "flowexp":          args.flowexp,
         "channelroughness": args.channelroughness,
     }
-    build_input_file(args.param, args.value, overrides=overrides, tag=args.tag)
+    build_input_file(args.param, args.value, overrides=overrides, tag=args.tag,
+                      gauge_sdf=args.gauge_sdf)

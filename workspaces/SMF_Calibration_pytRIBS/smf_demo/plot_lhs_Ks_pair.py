@@ -40,6 +40,11 @@ No metrics used by this script were affected by the metric-consolidation
 pass (it plots kge, nse, pbias_pct, kge_r, kge_alpha, kge_beta -- none of
 peak_error_m3s / volume_error_pct / rmse_m3s, which were eliminated
 project-wide as exact duplicates of peak_error_pct / pbias_pct / nse).
+
+note: 7/9/26 plot_lhs_Ks_pair.py reads CSVs whose run-side scripts are 
+no longer active (one predates this project, the other was run_lhs_sweep.py, 
+which you archived) — it'll only ever show historical data now, not 
+regenerate anything new.
 """
 
 import pandas as pd
