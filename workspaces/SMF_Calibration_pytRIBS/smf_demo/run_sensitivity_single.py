@@ -23,9 +23,14 @@ checking for a synthetic truth file in calibration_work/synth_truth/:
     The .qout file uses fractional hours from 2014-08-01 00:00;
     the flood peak for Aug 12 falls near hour 282–283.
 
-To activate synthetic mode, ensure exactly one *.qout file exists in
-calibration_work/synth_truth/ before launching the LHS sweep.
-To revert to real-gauge mode, remove or rename that file.
+By default, synthetic mode activates when exactly one *.qout file exists
+directly in calibration_work/synth_truth/ (real-gauge mode is used
+otherwise). A build step can override this by writing a "truth_file" key
+into current_run_config.json -- either a specific .qout path, or a
+subdirectory containing exactly one .qout file (e.g. "synth_truth/
+storm080"). This is how the storm080/storm125 sibling sweeps select their
+own truth without disturbing the baseline auto-detect. See
+_find_synth_truth_file() for details.
 
 METRICS COMPUTED
 ----------------
@@ -212,11 +217,57 @@ def _compute_phase_metrics(obs: pd.Series, sim: pd.Series) -> dict:
 # -----------------------------------------------------------------------
 # HELPER: detect synthetic truth mode
 # -----------------------------------------------------------------------
-def _find_synth_truth_file(calib_dir: Path):
+def _find_synth_truth_file(calib_dir: Path, truth_file_override=None):
     """
-    Return the path to the synthetic truth .qout file if exactly one
-    exists in calibration_work/synth_truth/, else return None.
+    Return the path to the synthetic truth .qout file to score against.
+
+    truth_file_override may be (read from run_config["truth_file"], written
+    by the calling build step -- e.g. build_only() in a run_lhs_*.py sweep
+    script):
+
+      - None (default): fall back to the original auto-detect -- exactly
+        one *.qout file directly in calibration_work/synth_truth/, else
+        None (real-gauge mode). This is what the baseline Series 100 sweep
+        uses, and is unchanged from the original single-truth convention.
+
+      - A directory path (relative to calib_dir, or absolute): the same
+        "exactly one *.qout file" auto-detect is applied *within that
+        directory* instead. This is what the storm080/storm125 sibling
+        sweeps use (e.g. "synth_truth/storm080") -- callers never need to
+        hardcode the exact truth filename, only which storm-magnitude
+        subdirectory to look in.
+
+      - A file path: used directly, if it exists.
+
+    With three truth files now live simultaneously (baseline in
+    synth_truth/, storm080 and storm125 each in their own subdirectory),
+    an explicit override that fails to resolve raises FileNotFoundError
+    rather than silently falling back to real-gauge mode -- a silent
+    fallback would let a whole sweep run and complete against the wrong
+    (or no) truth without any error, which is a much worse failure mode
+    than stopping immediately.
     """
+    if truth_file_override:
+        override_path = Path(truth_file_override)
+        if not override_path.is_absolute():
+            override_path = calib_dir / override_path
+
+        if override_path.is_dir():
+            qout_files = list(override_path.glob("*.qout"))
+            if len(qout_files) == 1:
+                return qout_files[0]
+            raise FileNotFoundError(
+                f"truth_file override directory {override_path} does not "
+                f"contain exactly one *.qout file (found "
+                f"{[f.name for f in qout_files]}). Check that only the "
+                f"intended storm's truth file lives in this subdirectory."
+            )
+
+        if override_path.exists():
+            return override_path
+
+        raise FileNotFoundError(f"truth_file override does not exist: {override_path}")
+
     synth_dir = calib_dir / "synth_truth"
     if not synth_dir.exists():
         return None
@@ -300,7 +351,8 @@ def run_and_score():
     # Load observed discharge
     # Automatically switches between real-gauge and synthetic-truth mode.
     # ------------------------------------------------------------------
-    synth_file = _find_synth_truth_file(calib_dir)
+    truth_file_override = run_config.get("truth_file")
+    synth_file = _find_synth_truth_file(calib_dir, truth_file_override)
 
     if synth_file is not None:
         # ---- SYNTHETIC TRUTH MODE ----

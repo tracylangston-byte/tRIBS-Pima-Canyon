@@ -1,33 +1,78 @@
 """
 plot_truth_hydrograph_comparison.py
 =====================================
-Plots the real SMF gauge (observed) alongside the synthetic truth
-hydrographs for Series 93, 94, and 95 on a single figure.
+Diagnostic hydrograph-shape comparison for the Section 7 truth-point
+validation anomaly (see "Handoff: Series 100 Storm-Magnitude Investigation
++ Truth-Point Validation Anomaly").
 
-Series truth files (all in calibration_work/synth_truth_archive/):
-  S93 — synth_truth_Ks8p5_cv4p5_r0p24_n0p075.qout  (n = 0.075, heavy roughness)
-  S94 — SMF_20140812_63_r0p15_Outlet.qout            (r = 0.15,  low recession exponent)
-  S95 — SMF_20140812_60_Ks15p0x_Outlet.qout          (Ks = 15×,  high conductivity)
+REPURPOSED (2026-07) from its original form, which overlaid several
+synthetic-truth candidate hydrographs (S93/S94/S95/truth100) against the
+real SMF gauge -- that comparison is superseded by the truth reset. This
+version instead answers the open Section 7.6 question directly:
 
-Notes:
-  - S94/S95 are from the 60s single-param sweep (OPINTRVL = 1 hr); they are
-    interpolated to 5-min after resampling so the event shape is preserved.
-  - S93 was run at OPINTRVL = 0.0833 hr (5-min); no interpolation needed.
-  - "Observed" = real SMF gauge from SMF_Observations_1993-2025.xlsx.
+  validate_truth_point_100_storms.py builds and runs tRIBS AT the exact
+  true (Ks_mult, f_RS_abs, cv, r, n) point and scores it against that
+  storm's own synthetic-truth .qout. Because both "Observed" (=truth) and
+  "Simulated" (=validation run) come from running the identical model at
+  identical parameters and forcing, they should reproduce each other
+  almost exactly (PBIAS~0%, KGE~1.0) -- but they do not (Section 7.3:
+  e.g. 100_narrow scores PBIAS=-6.92%, KGE=0.9211). Every input-side
+  explanation checked so far (SPOPINTRVL, soil table, mesh/met/rasters,
+  binary) has been ruled out (Section 7.4). This script reads one of the
+  *_compare_obs_sim.csv files written by run_sensitivity_single.py for a
+  validation run and asks: WHERE in the event window does the volume
+  discrepancy accumulate, and is the pattern consistent with a fixed
+  timing/phase offset between the two pipelines (as opposed to a real
+  shape/process difference)?
 
-Usage (run from smf_demo/):
+Four diagnostics, one figure:
+  1. Hydrograph overlay, full event window
+  2. Point-wise residual (Simulated - Observed) over time
+  3. Cumulative volume-error curve (running % of final PBIAS) over time
+  4. Lag-scan: RMSE and Pearson r of Simulated-shifted-by-lag vs Observed,
+     across a range of +/-N min lags -- tests whether a fixed timing
+     offset between the two pipelines would resolve most of the mismatch
+
+Usage (run from smf_demo/, or pass --csv directly):
     python plot_truth_hydrograph_comparison.py
+    python plot_truth_hydrograph_comparison.py --label storm080
+    python plot_truth_hydrograph_comparison.py --csv /path/to/some_compare_obs_sim.csv --label custom_run
 
 Output:
     calibration_work/03_comparisons/sensitivity_plots/truth_comparison/
-        truth_hydrograph_comparison_S93_S94_S95.png
+        truthcheck_hydrograph_diagnostic_<label>.png
+    Prints a metrics sanity-check table (compare against Section 7.3
+    documented values) and a lag-scan table to stdout.
 """
 
-import numpy as np
-import pandas as pd
+import argparse
+import sys
+from pathlib import Path
+
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
-from pathlib import Path
+import numpy as np
+import pandas as pd
+
+# -----------------------------------------------------------------------
+# CLI
+# -----------------------------------------------------------------------
+parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+parser.add_argument("--label", default="100_narrow",
+                     help="Validation run label (100_narrow, storm080, storm125, or any "
+                          "custom string used for titles/filenames when --csv is given "
+                          "explicitly). Default: 100_narrow")
+parser.add_argument("--csv", default=None,
+                     help="Explicit path to a *_compare_obs_sim.csv. If omitted, defaults "
+                          "to the standard truthcheck path for --label.")
+parser.add_argument("--outdir", default=None,
+                     help="Directory to save the output figure. If omitted, uses the "
+                          "standard calibration_work plot directory.")
+parser.add_argument("--lag-range-min", type=int, default=30,
+                     help="Max lag (minutes, each direction) to scan. Default 30.")
+args = parser.parse_args()
 
 # -----------------------------------------------------------------------
 # PATHS
@@ -35,158 +80,165 @@ from pathlib import Path
 script_dir   = Path.cwd()
 project_root = script_dir.parent if script_dir.name == "smf_demo" else script_dir
 calib_dir    = project_root / "calibration_work"
-archive_dir  = calib_dir / "synth_truth_archive"
-plot_dir     = calib_dir / "03_comparisons" / "sensitivity_plots" / "truth_comparison"
+
+if args.csv is not None:
+    csv_path = Path(args.csv)
+else:
+    csv_path = (calib_dir / "03_comparisons" / "csv_exports"
+                / f"SMF_20140812_100_truthcheck_{args.label}_compare_obs_sim.csv")
+
+if args.outdir is not None:
+    plot_dir = Path(args.outdir)
+else:
+    plot_dir = calib_dir / "03_comparisons" / "sensitivity_plots" / "truth_comparison"
 plot_dir.mkdir(parents=True, exist_ok=True)
 
-OBS_XLSX    = project_root / "smf_init_data" / "met" / "SMF_Observations_1993-2025.xlsx"
-QOUT_ORIGIN = pd.Timestamp("2014-08-01")   # fractional-hour Time column origin
-
-EVENT_START = "2014-08-12 17:30"
-EVENT_END   = "2014-08-12 21:00"
+if not csv_path.exists():
+    sys.exit(f"ERROR: {csv_path} not found.")
 
 # -----------------------------------------------------------------------
-# CONFIG
-# Add or remove series here; no other edits needed.
-# Keys: label, file, color, lw, ls
+# LOAD
 # -----------------------------------------------------------------------
-SERIES = [
-    {
-        "label": "S93  |  n = 0.075",
-        "file":  archive_dir / "synth_truth_Ks8p5_cv4p5_r0p24_n0p075.qout",
-        "color": "#1976D2",   # blue
-        "lw":    2.0,
-        "ls":    "-",
-    },
-    {
-        "label": "S94  |  r = 0.15",
-        "file":  archive_dir / "SMF_20140812_63_r0p15_Outlet.qout",
-        "color": "#E65100",   # orange
-        "lw":    2.0,
-        "ls":    "-",
-    },
-    {
-        "label": "S95  |  Ks = 15×",
-        "file":  archive_dir / "SMF_20140812_60_Ks15p0x_Outlet.qout",
-        "color": "#6A1B9A",   # purple
-        "lw":    2.0,
-        "ls":    "-",
-    },
-    {
-        "label": "truth100  |  Ks=7.0x, f=0.012",
-        "file":  calib_dir / "02_results" / "60_sensitivity" / "SMF_20140812_60_Ks7p0x_truth100"
-                 / "SMF_20140812_60_Ks7p0x_truth100_Outlet.qout",
-        "color": "#2E7D32",   # green
-        "lw":    2.5,
-        "ls":    "-",
-    },
-]
-
+df  = pd.read_csv(csv_path, index_col=0, parse_dates=True)
+obs = df["Observed"]
+sim = df["Simulated"]
+dt_min = (df.index[1] - df.index[0]).total_seconds() / 60.0
 
 # -----------------------------------------------------------------------
-# HELPERS
+# STANDARD METRICS -- exact formulas from run_sensitivity_single.py, used
+# here as a sanity check that this CSV matches the documented Section 7.3
+# numbers before trusting any downstream diagnostic on it.
 # -----------------------------------------------------------------------
-def load_qout(path: Path) -> pd.Series:
-    """
-    Read a tRIBS *_Outlet.qout file; return 5-min discharge Series.
+def compute_metrics(obs, sim):
+    r     = np.corrcoef(sim, obs)[0, 1]
+    alpha = np.std(sim) / np.std(obs)
+    beta  = np.mean(sim) / np.mean(obs)
+    kge   = 1 - np.sqrt((r - 1) ** 2 + (alpha - 1) ** 2 + (beta - 1) ** 2)
+    nse   = 1 - (np.sum((sim - obs) ** 2) / np.sum((obs - obs.mean()) ** 2))
+    pbias = 100 * (np.sum(sim - obs) / np.sum(obs))
+    rmse  = np.sqrt(np.mean((sim - obs) ** 2))
+    obs_peak, sim_peak   = obs.max(), sim.max()
+    obs_tpeak, sim_tpeak = obs.idxmax(), sim.idxmax()
+    peak_error_pct       = (sim_peak - obs_peak) / obs_peak * 100
+    peak_timing_error_hr = (sim_tpeak - obs_tpeak).total_seconds() / 3600.0
+    return dict(r=r, alpha=alpha, beta=beta, kge=kge, nse=nse, pbias=pbias,
+                rmse=rmse, obs_peak=obs_peak, sim_peak=sim_peak,
+                obs_tpeak=obs_tpeak, sim_tpeak=sim_tpeak,
+                peak_error_pct=peak_error_pct,
+                peak_timing_error_hr=peak_timing_error_hr)
 
-    Handles both:
-      - 5-min output (OPINTRVL = 0.0833 hr): resample().mean() is clean
-      - 1-hr output  (OPINTRVL = 1 hr):       gaps filled by time-interpolation
-    """
-    df = pd.read_csv(
-        path, sep=r'\s+', skiprows=1,
-        names=["Time_hr", "Qstrm_m3s", "Hlev_m"]
-    )
-    df["datetime"] = pd.to_datetime(
-        df["Time_hr"] * 3600, unit="s", origin=QOUT_ORIGIN
-    )
-    df.set_index("datetime", inplace=True)
-
-    # Resample to 5-min; interpolate fills NaNs introduced for hourly-output files
-    s = (
-        df["Qstrm_m3s"]
-        .resample("5min")
-        .mean()
-        .interpolate(method="time")
-    )
-    return s.loc[EVENT_START:EVENT_END]
-
-
-def load_gauge() -> pd.Series:
-    """Read real SMF gauge; return m³/s Series at native resolution, cropped."""
-    obs = pd.read_excel(OBS_XLSX, sheet_name="Discharge", skiprows=6)
-    obs["datetime"] = pd.to_datetime(
-        obs["Date"].astype(str) + " " + obs["Time"].astype(str)
-    )
-    obs.set_index("datetime", inplace=True)
-    s = (obs["cfs"] * 0.0283168).resample("5min").mean()
-    return s.loc[EVENT_START:EVENT_END]
-
-
-def peak_label(series: pd.Series) -> str:
-    """Return a compact peak annotation string."""
-    pk_q = series.max()
-    pk_t = series.idxmax()
-    return f"peak {pk_q:.2f} m³/s @ {pk_t.strftime('%H:%M')}"
-
+m = compute_metrics(obs, sim)
+print(f"=== {args.label}: metrics sanity check (from {csv_path.name}) ===")
+print(f"  PBIAS                 {m['pbias']:+.4f} %")
+print(f"  KGE                   {m['kge']:.4f}   (r={m['r']:.4f}, alpha={m['alpha']:.4f}, beta={m['beta']:.4f})")
+print(f"  NSE                   {m['nse']:.4f}")
+print(f"  RMSE                  {m['rmse']:.4f} m3/s")
+print(f"  Peak: obs={m['obs_peak']:.3f} @ {m['obs_tpeak']}   sim={m['sim_peak']:.3f} @ {m['sim_tpeak']}")
+print(f"  Peak error             {m['peak_error_pct']:+.2f} %")
+print(f"  Peak timing error      {m['peak_timing_error_hr']*60:+.1f} min")
+print()
 
 # -----------------------------------------------------------------------
-# LOAD DATA
+# WHERE DOES THE VOLUME ERROR ACCUMULATE?
+# Cumulative (Sim - Obs) volume, expressed as % of the FINAL cumulative
+# observed volume -- i.e. this curve's endpoint equals total PBIAS by
+# construction, and its shape shows where along the event window that
+# total gets built up.
 # -----------------------------------------------------------------------
-print("Loading gauge data...")
-obs = load_gauge()
-print(f"  Observed:  {peak_label(obs)}")
+resid              = sim - obs
+cum_resid_vol       = resid.cumsum() * dt_min * 60.0     # m3/s * sec = m3
+cum_obs_vol_final    = obs.sum() * dt_min * 60.0
+cum_pct_of_final_pbias = 100.0 * cum_resid_vol / cum_obs_vol_final
 
-loaded = []   # (label, series, color, lw, ls)
-for cfg in SERIES:
-    p = cfg["file"]
-    if not p.exists():
-        print(f"  WARNING: file not found — {p.name}  (skipping)")
+# -----------------------------------------------------------------------
+# LAG SCAN -- does shifting Simulated in time reduce the mismatch?
+# Positive lag = delay Simulated (shift later in time); tests whether
+# Simulated is systematically running "ahead" of Observed.
+# -----------------------------------------------------------------------
+lag_steps = max(1, int(round(args.lag_range_min / dt_min)))
+rows = []
+for k in range(-lag_steps, lag_steps + 1):
+    sim_shifted = sim.shift(k)
+    valid = sim_shifted.notna() & obs.notna()
+    if valid.sum() < 10:
         continue
-    s = load_qout(p)
-    print(f"  {cfg['label']:30s}  {peak_label(s)}")
-    loaded.append((cfg["label"], s, cfg["color"], cfg["lw"], cfg["ls"]))
+    o, s = obs[valid], sim_shifted[valid]
+    rows.append({
+        "lag_min":   k * dt_min,
+        "rmse":      np.sqrt(np.mean((s - o) ** 2)),
+        "r":         np.corrcoef(s, o)[0, 1],
+        "pbias_pct": 100 * np.sum(s - o) / np.sum(o),
+    })
+lag_df   = pd.DataFrame(rows)
+zero_row = lag_df.loc[lag_df["lag_min"] == 0].iloc[0]
+best_row = lag_df.loc[lag_df["rmse"].idxmin()]
 
-if not loaded:
-    raise RuntimeError("No truth series were loaded — check archive_dir and filenames.")
+print("=== Lag scan (shifting Simulated relative to Observed) ===")
+print(lag_df.to_string(index=False, float_format=lambda x: f"{x:9.4f}"))
+print(f"\n  At lag=0:      RMSE={zero_row['rmse']:.4f}  r={zero_row['r']:.4f}  PBIAS={zero_row['pbias_pct']:+.2f}%")
+print(f"  Best-fit lag:  {best_row['lag_min']:+.0f} min   RMSE={best_row['rmse']:.4f}  r={best_row['r']:.4f}  PBIAS={best_row['pbias_pct']:+.2f}%")
+print()
 
 # -----------------------------------------------------------------------
-# PLOT
+# PLOT -- 4-panel diagnostic
 # -----------------------------------------------------------------------
-fig, ax = plt.subplots(figsize=(11, 6))
+fig, axes = plt.subplots(4, 1, figsize=(11, 15))
 
-# Observed — always black, thickest line
-ax.plot(
-    obs.index, obs.values,
-    color="black", linewidth=2.8, zorder=10,
-    label=f"Observed (real gauge)  —  {peak_label(obs)}"
-)
+# Panel 1: hydrograph overlay
+ax = axes[0]
+ax.plot(obs.index, obs.values, color="black", linewidth=2.2,
+        label=f"Observed (truth) — peak {m['obs_peak']:.2f} m3/s @ {m['obs_tpeak'].strftime('%m-%d %H:%M')}")
+ax.plot(sim.index, sim.values, color="#C62828", linewidth=1.8, linestyle="--",
+        label=f"Simulated (validation run) — peak {m['sim_peak']:.2f} m3/s @ {m['sim_tpeak'].strftime('%m-%d %H:%M')}")
+ax.set_ylabel("Discharge (m3/s)")
+ax.set_title(f"{args.label}: truth-point validation — Observed vs Simulated  "
+             f"(PBIAS={m['pbias']:+.2f}%, KGE={m['kge']:.4f})")
+ax.legend(fontsize=9, loc="upper right")
+ax.grid(alpha=0.3)
+ax.xaxis.set_major_formatter(mdates.DateFormatter("%m-%d %H:%M"))
 
-# Synthetic truths
-for label, series, color, lw, ls in loaded:
-    ax.plot(
-        series.index, series.values,
-        color=color, linewidth=lw, linestyle=ls,
-        label=f"{label}  —  {peak_label(series)}"
-    )
+# Panel 2: residual over time
+ax = axes[1]
+ax.axhline(0, color="gray", linewidth=1)
+ax.plot(resid.index, resid.values, color="#1976D2", linewidth=1.3)
+ax.fill_between(resid.index, resid.values, 0, color="#1976D2", alpha=0.25)
+ax.set_ylabel("Simulated − Observed\n(m3/s)")
+ax.set_title("Point-wise residual over time")
+ax.grid(alpha=0.3)
+ax.xaxis.set_major_formatter(mdates.DateFormatter("%m-%d %H:%M"))
 
-# Formatting
-ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
-ax.set_xlabel("Time (Aug 12, 2014)", fontsize=12)
-ax.set_ylabel("Discharge (m³/s)", fontsize=12)
-ax.set_title(
-    "SMF  |  Aug 12, 2014  |  Observed vs. New Truth Candidate (Ks=7.0x, f=0.012)",
-    fontsize=12
-)
-ax.legend(fontsize=9.5, framealpha=0.88, loc="upper right")
-ax.grid(True, alpha=0.3)
+# Panel 3: cumulative volume error (% of final PBIAS)
+ax = axes[2]
+ax.axhline(0, color="gray", linewidth=1)
+ax.plot(cum_pct_of_final_pbias.index, cum_pct_of_final_pbias.values,
+        color="#6A1B9A", linewidth=1.6)
+ax.axhline(m["pbias"], color="#6A1B9A", linestyle=":", linewidth=1,
+           label=f"Final PBIAS = {m['pbias']:+.2f}%")
+ax.set_ylabel("Cumulative vol. error\n(% of final total)")
+ax.set_title("Where the volume discrepancy accumulates")
+ax.legend(fontsize=9, loc="lower left")
+ax.grid(alpha=0.3)
+ax.xaxis.set_major_formatter(mdates.DateFormatter("%m-%d %H:%M"))
+
+# Panel 4: lag scan
+ax  = axes[3]
+ax2 = ax.twinx()
+l1, = ax.plot(lag_df["lag_min"], lag_df["rmse"], color="#E65100", marker="o",
+              markersize=3.5, label="RMSE")
+l2, = ax2.plot(lag_df["lag_min"], lag_df["r"], color="#2E7D32", marker="s",
+               markersize=3.5, label="Pearson r")
+ax.axvline(0, color="gray", linewidth=1)
+ax.axvline(best_row["lag_min"], color="#E65100", linestyle=":", linewidth=1.3)
+ax.set_xlabel("Lag applied to Simulated (min); positive = Simulated delayed")
+ax.set_ylabel("RMSE (m3/s)", color="#E65100")
+ax2.set_ylabel("Pearson r", color="#2E7D32")
+ax.set_title(f"Lag scan — best fit at lag = {best_row['lag_min']:+.0f} min "
+             f"(RMSE {zero_row['rmse']:.3f} → {best_row['rmse']:.3f})")
+ax.legend(handles=[l1, l2], fontsize=9, loc="upper right")
+ax.grid(alpha=0.3)
+
 fig.tight_layout()
-
-# -----------------------------------------------------------------------
-# SAVE
-# -----------------------------------------------------------------------
-out_path = plot_dir / "truth_hydrograph_comparison_truth100.png"
+out_path = plot_dir / f"truthcheck_hydrograph_diagnostic_{args.label}.png"
 fig.savefig(out_path, dpi=150, bbox_inches="tight")
-print(f"\nSaved: {out_path}")
+print(f"Saved: {out_path}")
 plt.close(fig)

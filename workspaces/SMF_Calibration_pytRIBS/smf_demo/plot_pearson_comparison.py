@@ -5,13 +5,28 @@ Compare the Pearson r (parameter × metric) matrix between two LHS sweep
 series using side-by-side heatmaps with a difference panel.
 
 Output:
-    /workspaces/tRIBS-Pima-Canyon/workspaces/SMF_Calibration_pytRIBS/calibration_work/03_comparisons/sensitivity_plots/Comparisons
     fig_pearson_comparison_{SERIES_A_LABEL}_vs_{SERIES_B_LABEL}.png
 
 Usage (run from smf_demo):
     python plot_pearson_comparison.py
 
 To adapt for a different pair of runs, edit the CONFIG block only.
+
+Change log
+----------
+- Layout rebuilt on one explicit GridSpec: category strip | panel A |
+  panel B | panel Delta | main colorbar | delta colorbar. Every colorbar
+  now lives in its own dedicated axis (fig.colorbar(..., cax=...)) instead
+  of the ax=[...] shorthand, which matplotlib does not lay out correctly
+  together with tight_layout (it was emitting "This figure includes Axes
+  that are not compatible with tight_layout" and could clip the delta
+  colorbar's label). tight_layout() has been dropped entirely in favor of
+  the explicit GridSpec width ratios, which is the layout-stable approach
+  for a figure with manually placed colorbar axes.
+- The bottom-of-figure phase-color legend is gone. Category is now shown
+  as a colored, labeled strip immediately to the left of panel A's
+  y-axis, spanning exactly the rows in that phase -- read directly off
+  the figure instead of decoded from a legend key.
 """
 
 import warnings
@@ -34,37 +49,55 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 SERIES = {
     "A": {
-        "label":       "Series 96 - Anchor A",         # display name in figure title
-        "csv":         "lhs_results_anchor_anchorA_96.csv",
+        "label":       "Series 97 log",         # display name in figure title
+        "csv":         "lhs_results_synth_Ks_f_97log.csv",
+        # Series 97log was scored against the OLD synthetic truth
+        # (retired). kinemvelcoef/flowexp/channelroughness are held fixed
+        # at these values in every row -- they are NOT swept in this
+        # series, hence PARAM_KEYS below uses Ks_mult/f_RS_abs instead.
         "true_values": {
+            "Ks_mult":          8.50,
+            "f_RS_abs":         0.020,
             "kinemvelcoef":     4.50,
             "flowexp":          0.24,
             "channelroughness": 0.026,
         },
     },
     "B": {
-        "label":       "Series 96 - Anchor B",
-        "csv":         "lhs_results_anchor_anchorB_96.csv",
+        "label":       "Series 100",
+        "csv":         "lhs_results_synth_Ks_f_100.csv",
+        # Series 100 is scored against the NEW synthetic truth
+        # (Ks_mult=7.0x, f_RS_abs=0.012); cv/r/n unchanged from Series 97log.
         "true_values": {
+            "Ks_mult":          7.00,
+            "f_RS_abs":         0.012,
             "kinemvelcoef":     4.50,
             "flowexp":          0.24,
             "channelroughness": 0.026,
         },
     },
-    # To add Series 93 once it exists, change one entry above to:
-    # "B": {
-    #     "label":       "Series 93",
-    #     "csv":         "lhs_results_synth_4param_93.csv",
-    #     "true_values": { ... },
+    # To add Series 96 Anchor A/B once needed again, swap an entry above to:
+    # "A": {
+    #     "label":       "Series 96 - Anchor A",
+    #     "csv":         "lhs_results_anchor_anchorA_96.csv",
+    #     "true_values": { "kinemvelcoef": 4.50, "flowexp": 0.24, "channelroughness": 0.026 },
     # },
+    # -- and set PARAM_KEYS below to the routing params (cv/r/n), since
+    # those are what's actually swept in anchor-based series like 96/99.
 }
 
 # Parameters to include (must be columns in both CSVs).
 # Order here controls column order in the heatmap.
+# IMPORTANT: this must match what's actually swept in the series being
+# compared. Ks x f sweeps (93, 97, 97log, 100, ...) vary Ks_mult/f_RS_abs
+# and hold cv/r/n fixed; anchor-based cv/r/n sweeps (96, 99) do the
+# opposite. A fixed (zero-variance) column produces an undefined
+# correlation -- see the variance guard in compute_pearson_matrix, which
+# will now warn loudly instead of silently returning NaN if this list is
+# set wrong for the series being loaded.
 PARAM_KEYS = [
-    "kinemvelcoef",
-    "flowexp",
-    "channelroughness",
+    "Ks_mult",
+    "f_RS_abs",
 ]
 
 # Metrics to include (must be columns in both CSVs).
@@ -95,10 +128,15 @@ COMPARISON_SUBDIR = "Comparisons"
 # =======================================================================
 
 PARAM_META = {
+    "Ks_mult":          {"label": PARAM_KEY["Ks_mult"]["symbol"],          "color": "#2a9d8f", "family": "Soil"},
+    "f_RS_abs":         {"label": PARAM_KEY["f_RS_abs"]["symbol"],         "color": "#e63946", "family": "Soil"},
     "kinemvelcoef":     {"label": PARAM_KEY["kinemvelcoef"]["symbol"],     "color": "#e76f51", "family": "Routing"},
     "flowexp":          {"label": PARAM_KEY["flowexp"]["symbol"],           "color": "#e9c46a", "family": "Routing"},
     "channelroughness": {"label": PARAM_KEY["channelroughness"]["symbol"], "color": "#457b9d", "family": "Routing"},
 }
+# Both parameter families are kept here (not just the active PARAM_KEYS)
+# so this same dict serves either a Ks x f comparison or an anchor-based
+# cv/r/n comparison -- only PARAM_KEYS above needs to change between uses.
 
 # Phase colors mirror plot_lhs_synth_permetric.py conventions
 METRIC_META = {
@@ -135,7 +173,7 @@ def load_series(cfg: dict) -> pd.DataFrame:
     if not path.exists():
         raise FileNotFoundError(
             f"CSV not found: {path}\n"
-            f"Run run_lhs_anchor_cvrn.py first."
+            f"Run the corresponding run_lhs_synth_4param*.py first."
         )
     df = pd.read_csv(path)
     print(f"  Loaded {len(df)} rows from {path.name}")
@@ -144,16 +182,54 @@ def load_series(cfg: dict) -> pd.DataFrame:
 
 def compute_pearson_matrix(df: pd.DataFrame,
                             param_keys: list,
-                            metric_keys: list) -> np.ndarray:
-    """Return (n_metrics × n_params) array of Pearson r values."""
+                            metric_keys: list,
+                            series_label: str = "") -> np.ndarray:
+    """Return (n_metrics × n_params) array of Pearson r values.
+
+    Variance guard: a parameter or metric column that's held fixed
+    (zero variance) in this series produces an undefined correlation --
+    pearsonr raises, the old code silently caught it and left NaN, and
+    an all-NaN heatmap gave no clue why. That's almost always a sign
+    that PARAM_KEYS/METRIC_KEYS in CONFIG doesn't match what was
+    actually swept in this CSV (e.g. comparing a Ks x f sweep while
+    PARAM_KEYS is still set to the routing params cv/r/n, or vice
+    versa). This now raises a visible warning naming the offending
+    column(s) instead of failing silently.
+    """
     n_m = len(metric_keys)
     n_p = len(param_keys)
     arr = np.full((n_m, n_p), np.nan)
+
+    tag = f"[{series_label}] " if series_label else ""
+
+    zero_var_params = [
+        p for p in param_keys
+        if p in df.columns and np.nanstd(df[p].values) < 1e-12
+    ]
+    zero_var_metrics = [
+        m for m in metric_keys
+        if m in df.columns and np.nanstd(df[m].values) < 1e-12
+    ]
+    if zero_var_params:
+        warnings.warn(
+            f"{tag}Zero-variance parameter column(s) {zero_var_params} -- "
+            f"held fixed in this series, not swept. Their row/column will "
+            f"be all-NaN. Check PARAM_KEYS in CONFIG matches what this "
+            f"CSV actually varies.",
+            stacklevel=2,
+        )
+    if zero_var_metrics:
+        warnings.warn(
+            f"{tag}Zero-variance metric column(s) {zero_var_metrics} -- "
+            f"correlations against these will be all-NaN.",
+            stacklevel=2,
+        )
+
     for i, m in enumerate(metric_keys):
-        if m not in df.columns:
+        if m not in df.columns or m in zero_var_metrics:
             continue
         for j, p in enumerate(param_keys):
-            if p not in df.columns:
+            if p not in df.columns or p in zero_var_params:
                 continue
             x = df[p].values
             y = df[m].values
@@ -168,16 +244,42 @@ def compute_pearson_matrix(df: pd.DataFrame,
     return arr
 
 
-def phase_separators(ax, metric_keys: list):
-    """Draw horizontal lines between metric phase groups."""
+def phase_groups(metric_keys):
+    """Collapse a list of metric keys into contiguous (phase, color, start,
+    end) groups, in the order the metrics appear."""
+    groups = []
     current_phase = None
+    prev_color = "gray"
+    start = 0
     for i, m in enumerate(metric_keys):
-        if m not in METRIC_META:
-            continue
-        phase = METRIC_META[m]["phase"]
-        if phase != current_phase and i > 0:
-            ax.axhline(i - 0.5, color="black", linewidth=1.5, alpha=0.7)
-        current_phase = phase
+        phase = METRIC_META.get(m, {}).get("phase", "other")
+        color = METRIC_META.get(m, {}).get("phase_color", "gray")
+        if phase != current_phase:
+            if current_phase is not None:
+                groups.append((current_phase, prev_color, start, i - 1))
+            current_phase = phase
+            prev_color = color
+            start = i
+    groups.append((current_phase, prev_color, start, len(metric_keys) - 1))
+    return groups
+
+
+def draw_category_strip(ax, metric_keys, ylim):
+    """Narrow labeled strip naming the hydrograph phase each block of rows
+    belongs to. Sits to the left of panel A's y-axis and replaces the
+    bottom-of-figure phase-color legend."""
+    ax.set_xlim(0, 1)
+    ax.set_ylim(ylim)
+    ax.axis("off")
+    for phase, color, start, end in phase_groups(metric_keys):
+        height = (end - start + 1)
+        ax.add_patch(mpatches.Rectangle(
+            (0.15, start - 0.5), 0.7, height,
+            facecolor=color, alpha=0.30, edgecolor=color, linewidth=1.0))
+        rotation = 90 if height >= 2 else 0
+        ax.text(0.5, start + height / 2.0 - 0.5, phase.upper(),
+                ha="center", va="center", rotation=rotation,
+                fontsize=8.5, fontweight="bold", color="#333333")
 
 
 def draw_heatmap(ax, arr: np.ndarray, metric_keys: list, param_labels: list,
@@ -208,19 +310,21 @@ def draw_heatmap(ax, arr: np.ndarray, metric_keys: list, param_labels: list,
             METRIC_META[m]["label"] if m in METRIC_META else m
             for m in metric_keys
         ]
-        phase_colors_ordered = [
-            METRIC_META[m]["phase_color"] if m in METRIC_META else "black"
-            for m in metric_keys
-        ]
         ax.set_yticks(range(len(metric_keys)))
         ax.set_yticklabels(metric_display_labels, fontsize=8.5)
-        for tick, col in zip(ax.get_yticklabels(), phase_colors_ordered):
-            tick.set_color(col)
     else:
         ax.set_yticks(range(len(metric_keys)))
         ax.set_yticklabels([], fontsize=8.5)
 
-    phase_separators(ax, metric_keys)
+    current_phase = None
+    for i, m in enumerate(metric_keys):
+        if m not in METRIC_META:
+            continue
+        phase = METRIC_META[m]["phase"]
+        if phase != current_phase and i > 0:
+            ax.axhline(i - 0.5, color="black", linewidth=1.5, alpha=0.7)
+        current_phase = phase
+
     ax.tick_params(left=False)
     return im
 
@@ -266,7 +370,10 @@ print(f"\n  Using {n_m} metrics × {n_p} parameters")
 print("\nComputing Pearson r matrices...")
 pearson = {}
 for key in ("A", "B"):
-    pearson[key] = compute_pearson_matrix(dfs[key], available_params, available_metrics)
+    pearson[key] = compute_pearson_matrix(
+        dfs[key], available_params, available_metrics,
+        series_label=SERIES[key]["label"],
+    )
     print(f"  {SERIES[key]['label']}: done")
 
 delta = pearson["B"] - pearson["A"]   # Δ = B minus A
@@ -303,19 +410,37 @@ for i, m in enumerate(available_metrics):
 
 
 # =======================================================================
-# FIGURE: 3-panel heatmap  [Series A | Series B | Δ = B − A]
+# FIGURE: category strip | Series A | Series B | Delta | cbar | cbar
+#
+# One explicit GridSpec row, six axes. Both colorbars get their own fixed
+# -width axis (cax=...) rather than the ax=[...] shorthand -- that
+# shorthand does not cooperate with tight_layout (matplotlib warns "This
+# figure includes Axes that are not compatible with tight_layout") and
+# could squeeze or clip the delta colorbar's label. Using explicit width
+# ratios instead of tight_layout keeps the whole row stable.
 # =======================================================================
 print("\nBuilding figure...")
 
 label_a = SERIES["A"]["label"]
 label_b = SERIES["B"]["label"]
 
-fig_width  = 5.5 * 3 + 1.5          # 3 panels + colorbar space
-fig_height = max(5.0, 0.65 * n_m + 2.5)
-fig, axes  = plt.subplots(1, 3, figsize=(fig_width, fig_height),
-                           gridspec_kw={"wspace": 0.08})
+panel_w   = 4.6
+fig_height = max(5.0, 0.65 * n_m + 2.6)
+fig_width  = 0.55 + panel_w * 3 + 0.35 + 0.35 + 1.6   # strip+3 panels+2 cbars+margins
 
-ax_a, ax_b, ax_d = axes
+fig = plt.figure(figsize=(fig_width, fig_height))
+gs = fig.add_gridspec(
+    1, 6,
+    width_ratios=[0.55, panel_w, panel_w, panel_w, 0.30, 0.30],
+    wspace=0.12,
+)
+
+ax_cat    = fig.add_subplot(gs[0, 0])
+ax_a      = fig.add_subplot(gs[0, 1])
+ax_b      = fig.add_subplot(gs[0, 2])
+ax_d      = fig.add_subplot(gs[0, 3])
+ax_cbar_m = fig.add_subplot(gs[0, 4])
+ax_cbar_d = fig.add_subplot(gs[0, 5])
 
 # Shared colormap for the two primary panels
 cmap_main = plt.get_cmap("RdBu_r")
@@ -329,42 +454,25 @@ norm_delta = mcolors.TwoSlopeNorm(vmin=-delta_max, vcenter=0.0, vmax=delta_max)
 draw_heatmap(ax_a, pearson["A"], available_metrics, param_labels_avail,
              label_a, cmap_main, norm_main, show_ylabel=True)
 
-draw_heatmap(ax_b, pearson["B"], available_metrics, param_labels_avail,
+im_b = draw_heatmap(ax_b, pearson["B"], available_metrics, param_labels_avail,
              label_b, cmap_main, norm_main, show_ylabel=False)
 
-draw_heatmap(ax_d, delta, available_metrics, param_labels_avail,
-             f"Δ ({label_b} − {label_a})",
+im_d = draw_heatmap(ax_d, delta, available_metrics, param_labels_avail,
+             f"\u0394 ({label_b} \u2212 {label_a})",
              cmap_delta, norm_delta, show_ylabel=False)
 
-# Colorbar for primary panels (shared)
-sm_main = plt.cm.ScalarMappable(cmap=cmap_main, norm=norm_main)
-sm_main.set_array([])
-cbar_main = fig.colorbar(sm_main, ax=[ax_a, ax_b],
-                          fraction=0.022, pad=0.02, shrink=0.85)
+# Category strip shares panel A's y-limits exactly
+draw_category_strip(ax_cat, available_metrics, ax_a.get_ylim())
+
+# Dedicated colorbar axes -- fixed width, can't overlap or get squeezed
+cbar_main = fig.colorbar(
+    plt.cm.ScalarMappable(cmap=cmap_main, norm=norm_main), cax=ax_cbar_m)
 cbar_main.set_label("Pearson r", fontsize=10)
 
-# Colorbar for delta panel
-sm_delta = plt.cm.ScalarMappable(cmap=cmap_delta, norm=norm_delta)
-sm_delta.set_array([])
-cbar_delta = fig.colorbar(sm_delta, ax=ax_d,
-                           fraction=0.035, pad=0.03, shrink=0.85)
-cbar_delta.set_label("Δ Pearson r", fontsize=10)
+cbar_delta = fig.colorbar(
+    plt.cm.ScalarMappable(cmap=cmap_delta, norm=norm_delta), cax=ax_cbar_d)
+cbar_delta.set_label("\u0394 Pearson r", fontsize=10)
 cbar_delta.ax.axhline(0, color="black", linewidth=1.0, linestyle="--")
-
-# Phase legend
-phase_handles = {}
-for m in available_metrics:
-    if m not in METRIC_META:
-        continue
-    ph = METRIC_META[m]["phase"]
-    if ph not in phase_handles:
-        phase_handles[ph] = mpatches.Patch(
-            facecolor=METRIC_META[m]["phase_color"],
-            label=ph.capitalize())
-fig.legend(handles=list(phase_handles.values()), fontsize=9,
-           loc="lower center", ncol=len(phase_handles),
-           bbox_to_anchor=(0.5, -0.04),
-           facecolor="white", framealpha=0.9)
 
 # Sample sizes in title
 n_a = len(dfs["A"])
@@ -373,9 +481,7 @@ fig.suptitle(
     f"Pearson r matrix comparison — {label_a} (n={n_a}) vs {label_b} (n={n_b})\n"
     f"Rows = metrics  |  Cols = swept parameters  |  "
     f"Right panel = shift in parameter–metric sensitivity structure",
-    fontsize=11, y=1.02)
-
-fig.tight_layout()
+    fontsize=11, y=1.04)
 
 out_fname = (
     f"fig_pearson_comparison_"
