@@ -121,16 +121,22 @@ def compute_metrics(obs, sim):
     obs_tpeak, sim_tpeak = obs.idxmax(), sim.idxmax()
     peak_error_pct       = (sim_peak - obs_peak) / obs_peak * 100
     peak_timing_error_hr = (sim_tpeak - obs_tpeak).total_seconds() / 3600.0
+    # Kling et al. (2012) modified KGE, added alongside 2009 per
+    # Handoff_KGE2012Transition_v1.md. gamma = alpha/beta exactly.
+    gamma    = alpha / beta
+    kge_2012 = 1 - np.sqrt((r - 1) ** 2 + (gamma - 1) ** 2 + (beta - 1) ** 2)
     return dict(r=r, alpha=alpha, beta=beta, kge=kge, nse=nse, pbias=pbias,
                 rmse=rmse, obs_peak=obs_peak, sim_peak=sim_peak,
                 obs_tpeak=obs_tpeak, sim_tpeak=sim_tpeak,
                 peak_error_pct=peak_error_pct,
-                peak_timing_error_hr=peak_timing_error_hr)
+                peak_timing_error_hr=peak_timing_error_hr,
+                gamma=gamma, kge_2012=kge_2012)
 
 m = compute_metrics(obs, sim)
 print(f"=== {args.label}: metrics sanity check (from {csv_path.name}) ===")
 print(f"  PBIAS                 {m['pbias']:+.4f} %")
 print(f"  KGE                   {m['kge']:.4f}   (r={m['r']:.4f}, alpha={m['alpha']:.4f}, beta={m['beta']:.4f})")
+print(f"  KGE_2012              {m['kge_2012']:.4f}   (r={m['r']:.4f}, gamma={m['gamma']:.4f}, beta={m['beta']:.4f})")
 print(f"  NSE                   {m['nse']:.4f}")
 print(f"  RMSE                  {m['rmse']:.4f} m3/s")
 print(f"  Peak: obs={m['obs_peak']:.3f} @ {m['obs_tpeak']}   sim={m['sim_peak']:.3f} @ {m['sim_tpeak']}")

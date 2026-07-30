@@ -209,7 +209,12 @@ def compute_metrics(obs, sim):
     beta  = np.mean(sim) / np.mean(obs)
     kge   = 1 - np.sqrt((r - 1) ** 2 + (alpha - 1) ** 2 + (beta - 1) ** 2)
     pbias = 100 * (np.sum(sim - obs) / np.sum(obs))
-    return dict(r=r, alpha=alpha, beta=beta, kge=kge, pbias=pbias)
+    # Kling et al. (2012) modified KGE, added alongside 2009 per
+    # Handoff_KGE2012Transition_v1.md. gamma = alpha/beta exactly.
+    gamma    = alpha / beta
+    kge_2012 = 1 - np.sqrt((r - 1) ** 2 + (gamma - 1) ** 2 + (beta - 1) ** 2)
+    return dict(r=r, alpha=alpha, beta=beta, kge=kge, pbias=pbias,
+                gamma=gamma, kge_2012=kge_2012)
 
 
 labels = [s.strip() for s in args.labels.split(",") if s.strip()]

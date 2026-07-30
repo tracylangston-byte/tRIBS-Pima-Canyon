@@ -407,6 +407,12 @@ def run_and_score():
     beta  = np.mean(sim) / np.mean(obs)
     kge   = 1 - np.sqrt((r - 1) ** 2 + (alpha - 1) ** 2 + (beta - 1) ** 2)
 
+    # Kling et al. (2012) modified KGE: gamma (CV ratio) replaces alpha to
+    # decouple "shape" from bias. gamma = alpha/beta exactly. Added
+    # alongside the 2009 formula per Handoff_KGE2012Transition_v1.md.
+    gamma    = alpha / beta
+    kge_2012 = 1 - np.sqrt((r - 1) ** 2 + (gamma - 1) ** 2 + (beta - 1) ** 2)
+
     # ------------------------------------------------------------------
     # Compute phase-specific metrics (5 new)
     # ------------------------------------------------------------------
@@ -447,6 +453,8 @@ def run_and_score():
         "kge_r":               r,
         "kge_alpha":           alpha,
         "kge_beta":            beta,
+        "kge_gamma":           gamma,
+        "kge_2012":            kge_2012,
 
         # --- phase-specific metrics (hydrograph_metrics_table) ---
         "threshold_m3s":                   phase_metrics["threshold_m3s"],

@@ -136,15 +136,20 @@ def compute_metrics(obs, sim):
     kge   = 1 - np.sqrt((r - 1) ** 2 + (alpha - 1) ** 2 + (beta - 1) ** 2)
     pbias = 100 * (np.sum(sim - obs) / np.sum(obs))
     rmse  = np.sqrt(np.mean((sim - obs) ** 2))
-    return dict(r=r, alpha=alpha, beta=beta, kge=kge, pbias=pbias, rmse=rmse)
+    # Kling et al. (2012) modified KGE, added alongside 2009 per
+    # Handoff_KGE2012Transition_v1.md. gamma = alpha/beta exactly.
+    gamma    = alpha / beta
+    kge_2012 = 1 - np.sqrt((r - 1) ** 2 + (gamma - 1) ** 2 + (beta - 1) ** 2)
+    return dict(r=r, alpha=alpha, beta=beta, kge=kge, pbias=pbias, rmse=rmse,
+                gamma=gamma, kge_2012=kge_2012)
 
 m1 = compute_metrics(run1["Observed"], run1["Simulated"])
 m2 = compute_metrics(run2["Observed"], run2["Simulated"])
 
 print("=== Independently recomputed metrics, each run vs. its own Observed column ===")
-print(f"  RUN1:  PBIAS={m1['pbias']:+.4f}%  KGE={m1['kge']:.4f}  (r={m1['r']:.4f}, alpha={m1['alpha']:.4f}, beta={m1['beta']:.4f})")
-print(f"  RUN2:  PBIAS={m2['pbias']:+.4f}%  KGE={m2['kge']:.4f}  (r={m2['r']:.4f}, alpha={m2['alpha']:.4f}, beta={m2['beta']:.4f})")
-print(f"  Delta: dPBIAS={m2['pbias']-m1['pbias']:+.6f} pct pts   dKGE={m2['kge']-m1['kge']:+.6f}\n")
+print(f"  RUN1:  PBIAS={m1['pbias']:+.4f}%  KGE={m1['kge']:.4f}  KGE_2012={m1['kge_2012']:.4f}  (r={m1['r']:.4f}, alpha={m1['alpha']:.4f}, gamma={m1['gamma']:.4f}, beta={m1['beta']:.4f})")
+print(f"  RUN2:  PBIAS={m2['pbias']:+.4f}%  KGE={m2['kge']:.4f}  KGE_2012={m2['kge_2012']:.4f}  (r={m2['r']:.4f}, alpha={m2['alpha']:.4f}, gamma={m2['gamma']:.4f}, beta={m2['beta']:.4f})")
+print(f"  Delta: dPBIAS={m2['pbias']-m1['pbias']:+.6f} pct pts   dKGE={m2['kge']-m1['kge']:+.6f}   dKGE_2012={m2['kge_2012']-m1['kge_2012']:+.6f}\n")
 
 # -----------------------------------------------------------------------
 # SANITY CHECK: Observed columns should be identical (same truth .qout

@@ -2,15 +2,25 @@
 plot_lhs_Ks_f_100.py
 ======================
 Generates contour plots from the Series 100 synthetic Ks_mult x f_RS_abs LHS
-sweep (lhs_results_synth_Ks_f_100.csv), scored against the NEW noise-free
-synthetic truth hydrograph (cv/r/n pinned at confirmed truth values:
-cv=4.5, r=0.24, n=0.026; Ks_mult=7.0x, f_RS_abs=0.012).
+sweep (lhs_results_synth_Ks_f_100_RESCORED.csv), scored against the NEW
+noise-free synthetic truth hydrograph (cv/r/n pinned at confirmed truth
+values: cv=4.5, r=0.24, n=0.026; Ks_mult=7.0x, f_RS_abs=0.012).
+
+UPDATED (Handoff_KGE2012Transition_v2.md): the composite metric and
+variability term now use the Kling et al. (2012) formulation throughout --
+KGE_2012 (column `kge_2012`) replaces KGE_2009 (column `kge`) as the
+plotted/ranked composite, and gamma (column `kge_gamma`, the CV-based
+variability ratio) replaces alpha (column `kge_alpha`) as the plotted
+variability component. r and beta are unchanged between formulations, so
+those figures are untouched. The retired 2009 columns (`kge`, `kge_alpha`)
+are still pulled into the top-20 audit table for traceability, but no
+longer drive any figure. See the handoff doc for why: alpha and beta were
+~99% collinear in this dataset (alpha was re-reporting volume bias, not
+independent shape information); gamma decouples that (r~0.37).
 
 This is a direct adaptation of plot_lhs_Ks_f_97log.py -- same methodology,
 same normalized-coordinate interpolation fix, same 8-figure output set.
-Only the config block changed (results file, output subdir, event label,
-top-20 table filename) to point at the Series 100 truth reset. The script
-is otherwise fully data-driven: the best-KGE run, axis ranges, and
+The script is otherwise fully data-driven: the best-run, axis ranges, and
 interpolation grids are all computed from whatever's in the CSV, so no
 truth values are hardcoded in the plotting logic itself.
 
@@ -20,7 +30,9 @@ anomaly (KGE bottoming near -0.4, PBIAS reaching -72%/+93%). The new
 truth's surface may not have the same extremes in the same place -- check
 the printed kge_vals.min()/max() and pbias_vals.min()/max() after the
 first run and tighten/loosen these three constants if the panels look
-washed out or over-clipped.
+washed out or over-clipped. (KGE_2012 tracks KGE_2009 closely -- r=0.995
+on this dataset -- so the carried-over clip range is still a reasonable
+starting point.)
 
 Usage (run from the smf_demo directory):
     python plot_lhs_Ks_f_100.py
@@ -29,16 +41,16 @@ Produces 8 figures + 1 CSV saved to:
     calibration_work/03_comparisons/sensitivity_plots/lhs_Ks_f_100/
 
 Figure list:
-    fig1_kge_contour.png          -- KGE, linear|log side by side, clipped colorbar
+    fig1_kge_contour.png          -- KGE_2012, linear|log side by side, clipped colorbar
     fig2_pbias_contour.png        -- PBIAS, linear|log side by side, clipped colorbar
     fig3_r_contour.png            -- r (correlation), linear|log side by side
-    fig4_alpha_contour.png        -- alpha (flashiness), linear|log side by side
+    fig4_gamma_contour.png        -- gamma (CV-based variability), linear|log side by side
     fig5_beta_contour.png         -- beta (volume bias), linear|log side by side
     fig6_nse_contour.png          -- NSE, linear|log side by side, clipped colorbar
     fig7_all_metrics_panel_linear.png  -- all six metrics, 2x3, linear f axis
     fig7_all_metrics_panel_log.png     -- all six metrics, 2x3, log10 f axis
-    fig8_raw_scatter_diagnostic.png    -- raw (no-interpolation) KGE/PBIAS vs Ks, binned by f
-    top20_pbias_synth_100.csv     -- 20 runs with smallest |PBIAS|
+    fig8_raw_scatter_diagnostic.png    -- raw (no-interpolation) KGE_2012/PBIAS vs Ks, binned by f
+    top20_pbias_synth_100.csv     -- 20 runs with smallest |PBIAS| (includes retired kge/kge_alpha for audit)
 """
 
 import pandas as pd
@@ -51,7 +63,7 @@ from scipy.interpolate import griddata
 # ======================================================================
 # CONFIG
 # ======================================================================
-RESULTS_CSV   = "lhs_results_synth_Ks_f_100.csv"
+RESULTS_CSV   = "lhs_results_synth_Ks_f_100_RESCORED.csv"
 OUTPUT_SUBDIR = "lhs_Ks_f_100"
 SECOND_COL    = "f_RS_abs"
 SECOND_LABEL  = "Hydraulic conductivity decay f (RS soil, mm\u207b\u00b9)"
@@ -91,8 +103,8 @@ if not results_path.exists():
 df = pd.read_csv(results_path)
 print(f"Loaded {len(df)} LHS runs from {results_path.name}")
 
-required_cols = ["Ks_mult", SECOND_COL, "kge", "nse", "pbias_pct",
-                  "kge_r", "kge_alpha", "kge_beta"]
+required_cols = ["Ks_mult", SECOND_COL, "kge_2012", "nse", "pbias_pct",
+                  "kge_r", "kge_gamma", "kge_beta"]
 missing_cols = [c for c in required_cols if c not in df.columns]
 if missing_cols:
     raise ValueError(f"Missing columns in results CSV: {missing_cols}")
@@ -102,9 +114,12 @@ print(f"  {len(df)} runs after dropping NaN rows")
 
 # -----------------------------------------------------------------------
 # TOP-20 BY |PBIAS| TABLE
+# -- kge/kge_alpha (the retired 2009 columns) are included here purely for
+#    audit-trail traceability if present; no figure below uses them.
 # -----------------------------------------------------------------------
-table_cols = [c for c in ["run_id", "Ks_mult", "f_RS_abs", "kge", "pbias_pct",
-                           "nse", "kge_alpha", "kge_beta"] if c in df.columns]
+table_cols = [c for c in ["run_id", "Ks_mult", "f_RS_abs", "kge_2012", "pbias_pct",
+                           "nse", "kge_gamma", "kge_beta", "kge", "kge_alpha"]
+              if c in df.columns]
 top20 = df.reindex(df["pbias_pct"].abs().sort_values().index)[table_cols].head(TOP_N_TABLE)
 top20_path = plot_dir / "top20_pbias_synth_100.csv"
 top20.to_csv(top20_path, index=False)
@@ -116,11 +131,11 @@ print(top20.to_string(index=False))
 # -----------------------------------------------------------------------
 ks_pts     = df["Ks_mult"].values
 second_pts = df[SECOND_COL].values
-kge_vals   = df["kge"].values
+kge_vals   = df["kge_2012"].values   # primary composite is now KGE_2012
 nse_vals   = df["nse"].values
 pbias_vals = df["pbias_pct"].values
 r_vals     = df["kge_r"].values
-alpha_vals = df["kge_alpha"].values
+gamma_vals = df["kge_gamma"].values  # replaces alpha as the plotted variability term
 beta_vals  = df["kge_beta"].values
 
 best_idx    = np.argmax(kge_vals)
@@ -128,10 +143,10 @@ best_ks     = ks_pts[best_idx]
 best_second = second_pts[best_idx]
 best_kge    = kge_vals[best_idx]
 
-print(f"\n  Best run: Ks={best_ks:.2f}x  f={best_second:.4g}  KGE={best_kge:.3f}  "
-      f"PBIAS={pbias_vals[best_idx]:+.1f}%")
-print(f"  KGE range:   {kge_vals.min():.3f} to {kge_vals.max():.3f}")
-print(f"  PBIAS range: {pbias_vals.min():.1f}% to {pbias_vals.max():.1f}%")
+print(f"\n  Best run (by KGE_2012): Ks={best_ks:.2f}x  f={best_second:.4g}  "
+      f"KGE_2012={best_kge:.3f}  PBIAS={pbias_vals[best_idx]:+.1f}%")
+print(f"  KGE_2012 range: {kge_vals.min():.3f} to {kge_vals.max():.3f}")
+print(f"  PBIAS range:    {pbias_vals.min():.1f}% to {pbias_vals.max():.1f}%")
 
 # -----------------------------------------------------------------------
 # BUILD TWO INTERPOLATION GRIDS -- one linear-spaced in f, one log-spaced
@@ -194,7 +209,7 @@ SURFACES_LIN = {
     "nse":   interp_surface(nse_vals,   KS_GRID_LIN_NORM, F_GRID_LIN_NORM),
     "pbias": interp_surface(pbias_vals, KS_GRID_LIN_NORM, F_GRID_LIN_NORM),
     "r":     interp_surface(r_vals,     KS_GRID_LIN_NORM, F_GRID_LIN_NORM),
-    "alpha": interp_surface(alpha_vals, KS_GRID_LIN_NORM, F_GRID_LIN_NORM),
+    "gamma": interp_surface(gamma_vals, KS_GRID_LIN_NORM, F_GRID_LIN_NORM),
     "beta":  interp_surface(beta_vals,  KS_GRID_LIN_NORM, F_GRID_LIN_NORM),
 }
 SURFACES_LOG = {
@@ -202,11 +217,11 @@ SURFACES_LOG = {
     "nse":   interp_surface(nse_vals,   KS_GRID_LOG_NORM, F_GRID_LOG_NORM),
     "pbias": interp_surface(pbias_vals, KS_GRID_LOG_NORM, F_GRID_LOG_NORM),
     "r":     interp_surface(r_vals,     KS_GRID_LOG_NORM, F_GRID_LOG_NORM),
-    "alpha": interp_surface(alpha_vals, KS_GRID_LOG_NORM, F_GRID_LOG_NORM),
+    "gamma": interp_surface(gamma_vals, KS_GRID_LOG_NORM, F_GRID_LOG_NORM),
     "beta":  interp_surface(beta_vals,  KS_GRID_LOG_NORM, F_GRID_LOG_NORM),
 }
 
-alpha_dev = max(abs(alpha_vals.min() - 1), abs(alpha_vals.max() - 1))
+gamma_dev = max(abs(gamma_vals.min() - 1), abs(gamma_vals.max() - 1))
 beta_dev  = max(abs(beta_vals.min() - 1), abs(beta_vals.max() - 1))
 
 XLABEL = "Ks multiplier"
@@ -263,19 +278,19 @@ def draw_metric_panel(ax, key, cmap, norm, cbar_label, log_scale,
     return cf
 
 
-COL_MAP = {"kge": "kge", "nse": "nse", "pbias": "pbias_pct",
-           "r": "kge_r", "alpha": "kge_alpha", "beta": "kge_beta"}
+COL_MAP = {"kge": "kge_2012", "nse": "nse", "pbias": "pbias_pct",
+           "r": "kge_r", "gamma": "kge_gamma", "beta": "kge_beta"}
 
 # -----------------------------------------------------------------------
-# FIGURE 1: KGE -- linear | log, clipped colorbar
+# FIGURE 1: KGE_2012 -- linear | log, clipped colorbar
 # -----------------------------------------------------------------------
 kge_norm = mcolors.Normalize(vmin=KGE_CLIP[0], vmax=KGE_CLIP[1])
 fig, axes = plt.subplots(1, 2, figsize=(16, 6))
-draw_metric_panel(axes[0], "kge", 'RdYlGn', kge_norm, 'KGE', log_scale=False, extend='min')
-cf = draw_metric_panel(axes[1], "kge", 'RdYlGn', kge_norm, 'KGE', log_scale=True, extend='min')
-fig.colorbar(cf, ax=axes, label=f'KGE (clipped at {KGE_CLIP[0]}, true min {kge_vals.min():.2f})',
+draw_metric_panel(axes[0], "kge", 'RdYlGn', kge_norm, "KGE'", log_scale=False, extend='min')
+cf = draw_metric_panel(axes[1], "kge", 'RdYlGn', kge_norm, "KGE'", log_scale=True, extend='min')
+fig.colorbar(cf, ax=axes, label=f"KGE' (2012), clipped at {KGE_CLIP[0]}, true min {kge_vals.min():.2f}",
              shrink=0.85)
-fig.suptitle(f"KGE -- {PAIR_LABEL} joint sensitivity\n{EVENT_LABEL}  |  "
+fig.suptitle(f"KGE' (2012 formulation) -- {PAIR_LABEL} joint sensitivity\n{EVENT_LABEL}  |  "
              f"White dashed = PBIAS zero-crossing  |  colorbar clipped below {KGE_CLIP[0]}",
              fontsize=12)
 save_fig(fig, "fig1_kge_contour.png")
@@ -309,18 +324,19 @@ fig.suptitle(f"r (KGE correlation component) -- timing and shape\n{EVENT_LABEL} 
 save_fig(fig, "fig3_r_contour.png")
 
 # -----------------------------------------------------------------------
-# FIGURE 4: alpha (flashiness) -- linear | log
+# FIGURE 4: gamma (CV-based variability ratio, Kling et al. 2012) -- linear | log
 # -----------------------------------------------------------------------
-alpha_norm = mcolors.TwoSlopeNorm(vmin=1 - alpha_dev, vcenter=1, vmax=1 + alpha_dev)
+gamma_norm = mcolors.TwoSlopeNorm(vmin=1 - gamma_dev, vcenter=1, vmax=1 + gamma_dev)
 fig, axes = plt.subplots(1, 2, figsize=(16, 6))
-draw_metric_panel(axes[0], "alpha", 'RdYlGn', alpha_norm, 'alpha', log_scale=False,
+draw_metric_panel(axes[0], "gamma", 'RdYlGn', gamma_norm, 'gamma', log_scale=False,
                    show_pbias_zero=False)
-cf = draw_metric_panel(axes[1], "alpha", 'RdYlGn', alpha_norm, 'alpha', log_scale=True,
+cf = draw_metric_panel(axes[1], "gamma", 'RdYlGn', gamma_norm, 'gamma', log_scale=True,
                         show_pbias_zero=False)
-fig.colorbar(cf, ax=axes, label='alpha (variability ratio)  perfect = 1.0', shrink=0.85)
-fig.suptitle(f"alpha (flashiness ratio) -- variability match in {PAIR_LABEL} space\n"
-             f"{EVENT_LABEL}  |  >1 = too flashy, <1 = too damped", fontsize=12)
-save_fig(fig, "fig4_alpha_contour.png")
+fig.colorbar(cf, ax=axes, label='gamma (CV-based variability ratio)  perfect = 1.0', shrink=0.85)
+fig.suptitle(f"gamma (2012 variability ratio) -- variability match in {PAIR_LABEL} space\n"
+             f"{EVENT_LABEL}  |  >1 = too flashy, <1 = too damped  |  "
+             f"replaces alpha (retired, see Handoff_KGE2012Transition_v2.md)", fontsize=12)
+save_fig(fig, "fig4_gamma_contour.png")
 
 # -----------------------------------------------------------------------
 # FIGURE 5: beta (volume bias) -- linear | log
@@ -353,11 +369,11 @@ save_fig(fig, "fig6_nse_contour.png")
 # FIGURE 7: all six metrics, 2x3 panel -- one version per axis scale
 # -----------------------------------------------------------------------
 panel_configs = [
-    ("kge",   "KGE",                'RdYlGn', kge_norm,   'KGE',              True,  'min'),
+    ("kge",   "KGE' (2012)",        'RdYlGn', kge_norm,   "KGE'",             True,  'min'),
     ("nse",   "NSE",                'RdYlGn', nse_norm,   'NSE',              True,  'min'),
     ("pbias", "PBIAS (%)",          'RdBu_r', pbias_norm, 'PBIAS (%)',        True,  'both'),
     ("r",     "r (correlation)",    'Blues',  r_norm,     'r',                False, 'neither'),
-    ("alpha", "alpha (flashiness)", 'RdYlGn', alpha_norm, 'alpha (perfect=1)', False, 'neither'),
+    ("gamma", "gamma (2012 variability)", 'RdYlGn', gamma_norm, 'gamma (perfect=1)', False, 'neither'),
     ("beta",  "beta (volume bias)", 'RdYlGn', beta_norm,  'beta (perfect=1)',  False, 'neither'),
 ]
 
@@ -385,20 +401,21 @@ for log_scale, suffix, axis_label in [(False, "linear", "linear f axis"),
 # Purpose: the contourf/griddata panels above can show dense vertical
 # banding or a zigzagging PBIAS=0 contour line if the interpolation
 # misbehaves. This figure sidesteps griddata entirely -- it bins runs
-# into a few narrow f_RS_abs slices and plots raw (kge, alpha, pbias) vs
+# into a few narrow f_RS_abs slices and plots raw (kge_2012, gamma, pbias) vs
 # Ks_mult directly, so any fine-scale "banding" that shows up here is real
 # point-to-point run noise, and anything that DOESN'T show up here (i.e.
 # only appears in the interpolated panels) is a cubic-interpolation/
 # contour artifact.
 #
-# Three rows: KGE, alpha (flashiness), PBIAS. The PBIAS row's y-axis is
-# algebraically identical to kge_beta (PBIAS_pct = 100*(kge_beta - 1),
-# confirmed exactly to floating-point precision) -- labeled explicitly
-# below so the redundancy is visible rather than silently duplicated.
-# alpha is NOT redundant with PBIAS/beta on its own axis definition, but
-# note the two are highly correlated in this Ks x f design (r~0.99 across
-# the full dataset) -- expect the alpha row to look similar in shape to
-# the PBIAS row, just on a different scale.
+# Three rows: KGE_2012, gamma (2012 variability), PBIAS. The PBIAS row's
+# y-axis is algebraically identical to kge_beta (PBIAS_pct = 100*(kge_beta
+# - 1), confirmed exactly to floating-point precision) -- labeled
+# explicitly below so the redundancy is visible rather than silently
+# duplicated. gamma is DELIBERATELY decoupled from PBIAS/beta by
+# construction (Kling et al. 2012's whole point) -- r~0.37 on this
+# dataset, vs. r~0.99 for the retired alpha term it replaces. Expect the
+# gamma row to NOT track the PBIAS row's shape -- that's the fix working,
+# not a bug. See Handoff_KGE2012Transition_v2.md.
 # -----------------------------------------------------------------------
 N_F_BINS = 4
 
@@ -417,7 +434,7 @@ for j, f_center in enumerate(f_bin_centers):
 
     ks_bin    = ks_pts[mask]
     kge_bin   = kge_vals[mask]
-    alpha_bin = alpha_vals[mask]
+    gamma_bin = gamma_vals[mask]
     pbias_bin = pbias_vals[mask]
 
     order = np.argsort(ks_bin)
@@ -426,14 +443,14 @@ for j, f_center in enumerate(f_bin_centers):
     ax_kge.scatter(ks_bin, kge_bin, s=22, color='steelblue', edgecolors='white', linewidths=0.5)
     ax_kge.plot(ks_bin[order], kge_bin[order], color='steelblue', alpha=0.3, linewidth=1.0)
     ax_kge.set_title(f"f \u2248 {f_center:.4f}  (\u00b115%, n={n_pts})", fontsize=10)
-    ax_kge.set_ylabel("KGE (raw)" if j == 0 else "")
+    ax_kge.set_ylabel("KGE' 2012 (raw)" if j == 0 else "")
     ax_kge.axhline(best_kge, color='gray', linestyle=':', linewidth=0.8)
 
-    ax_alpha = axes[1, j]
-    ax_alpha.scatter(ks_bin, alpha_bin, s=22, color='seagreen', edgecolors='white', linewidths=0.5)
-    ax_alpha.plot(ks_bin[order], alpha_bin[order], color='seagreen', alpha=0.3, linewidth=1.0)
-    ax_alpha.axhline(1.0, color='black', linestyle='--', linewidth=1.0)
-    ax_alpha.set_ylabel("alpha (raw, perfect=1)" if j == 0 else "")
+    ax_gamma = axes[1, j]
+    ax_gamma.scatter(ks_bin, gamma_bin, s=22, color='seagreen', edgecolors='white', linewidths=0.5)
+    ax_gamma.plot(ks_bin[order], gamma_bin[order], color='seagreen', alpha=0.3, linewidth=1.0)
+    ax_gamma.axhline(1.0, color='black', linestyle='--', linewidth=1.0)
+    ax_gamma.set_ylabel("gamma (raw, perfect=1)" if j == 0 else "")
 
     ax_pbias = axes[2, j]
     ax_pbias.scatter(ks_bin, pbias_bin, s=22, color='firebrick', edgecolors='white', linewidths=0.5)
@@ -445,8 +462,8 @@ for j, f_center in enumerate(f_bin_centers):
 fig.suptitle(
     f"Raw-scatter diagnostic (no interpolation) -- {PAIR_LABEL}\n"
     f"{EVENT_LABEL}  |  Points binned into narrow f-slices, connecting line is raw "
-    f"point order only (not a fit)  |  Dotted gray = best sampled KGE, dashed black = "
-    f"alpha=1 / PBIAS=0  |  PBIAS (%) = 100\u00d7(kge_beta \u2212 1), shown here in PBIAS units",
+    f"point order only (not a fit)  |  Dotted gray = best sampled KGE', dashed black = "
+    f"gamma=1 / PBIAS=0  |  PBIAS (%) = 100\u00d7(kge_beta \u2212 1), shown here in PBIAS units",
     fontsize=12
 )
 fig.tight_layout()

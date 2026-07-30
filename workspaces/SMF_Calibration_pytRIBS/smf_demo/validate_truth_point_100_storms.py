@@ -54,7 +54,7 @@ Usage (run from the smf_demo directory):
 
 Output:
     calibration_work/03_comparisons/summary_tables/truth_point_validation_100_storms.csv
-    Prints a comparison table (PBIAS/KGE/r/alpha/beta per storm) plus a
+    Prints a comparison table (PBIAS/KGE'/r/gamma/beta per storm) plus a
     direct comparison against each storm's previously-recorded best-KGE
     sweep coordinate (Ks=7.695, f=0.0199).
 """
@@ -237,19 +237,6 @@ def build_only(storm_cfg):
         model.runtime['value']     = builder.RUNTIME_HOURS
         model.rainintrvl['value']  = builder.RAIN_INTERVAL
         model.opintrvl['value']    = 0.0833   # 5-minute output
-        model.spopintrvl['value']  = 1        # CONFIRMED FIX (2026-07-17): direct .in diff
-                                                # against the truth-generation file (built via
-                                                # build_sensitivity_run.py's build_input_file())
-                                                # showed SPOPINTRVL=1 there vs. an unset/default
-                                                # 50000 in every build_only()-lineage script
-                                                # (this one included, until now) -- the ONLY
-                                                # substantive difference found. Must be int 1,
-                                                # not float 1.0 (see standing pytRIBS Results-class
-                                                # crash note). This line is the test: if PBIAS
-                                                # collapses toward 0% with this set, the true-point
-                                                # displacement seen in every prior sweep (Series 97/
-                                                # 97log/99/100/storm080/125/100_narrow) was this
-                                                # missing setting, not real equifinality.
 
         input_file_abs    = run_input_dir   / f"{run_id}.in"
         log_file_abs      = log_dir         / f"{run_id}.log"
@@ -351,19 +338,16 @@ def run_with_timeout(timeout_sec):
     return returncode, elapsed, timed_out, tribs_warning
 
 
-def check_truth_files(calib_dir, storms_to_check):
-    """Confirm needed truth files exist before running anything --
-    fail fast and clearly rather than partway through the loop. Only
-    checks the top-level synth_truth/ auto-detect if a storm actually
-    being run relies on it (i.e. 100_narrow is in storms_to_check)."""
+def check_truth_files(calib_dir):
+    """Confirm all three truth files exist before running anything --
+    fail fast and clearly rather than partway through the loop."""
     problems = []
-    if any(s["truth_subdir"] is None for s in storms_to_check):
-        top_level_dir = calib_dir / "synth_truth"
-        top_level = list(top_level_dir.glob("*.qout")) if top_level_dir.exists() else []
-        if len(top_level) != 1:
-            problems.append(f"synth_truth/ (baseline/100_narrow): expected 1 *.qout, "
-                             f"found {len(top_level)}")
-    for storm_cfg in storms_to_check:
+    top_level_dir = calib_dir / "synth_truth"
+    top_level = list(top_level_dir.glob("*.qout")) if top_level_dir.exists() else []
+    if len(top_level) != 1:
+        problems.append(f"synth_truth/ (baseline/100_narrow): expected 1 *.qout, "
+                         f"found {len(top_level)}")
+    for storm_cfg in STORMS:
         if storm_cfg["truth_subdir"] is None:
             continue
         d = calib_dir / storm_cfg["truth_subdir"]
@@ -381,18 +365,10 @@ def main():
         description="Single-point validation: run tRIBS at the exact true "
                     "(Ks_mult=7.0x, f_RS_abs=0.012) point under all three "
                     "storm forcings and report actual (not interpolated) "
-                    "PBIAS/KGE/r/alpha/beta.")
+                    "PBIAS/KGE'/r/gamma/beta.")
     parser.add_argument("--timeout", type=int, default=300,
                         help="Per-run hard timeout in seconds (default: 300)")
-    parser.add_argument("--only", type=str, default=None,
-                        choices=[s["label"] for s in STORMS],
-                        help="Run only one storm label (e.g. --only 100_narrow) -- "
-                             "for a fast single-point confirming test of the "
-                             "SPOPINTRVL fix instead of rerunning all three.")
     args = parser.parse_args()
-
-    storms_to_run = ([s for s in STORMS if s["label"] == args.only]
-                      if args.only else STORMS)
 
     script_dir = Path.cwd()
     project_root = (script_dir.parent if script_dir.name == "smf_demo" else script_dir)
@@ -400,20 +376,18 @@ def main():
     summary_dir = calib_dir / "03_comparisons" / "summary_tables"
     summary_dir.mkdir(parents=True, exist_ok=True)
 
-    check_truth_files(calib_dir, storms_to_run)
+    check_truth_files(calib_dir)
 
     print(f"{'='*70}")
     print(f"TRUTH-POINT VALIDATION -- Ks_mult={TRUTH_VALUES['Ks_mult']}, "
           f"f_RS_abs={TRUTH_VALUES['f_RS_abs']}, cv={PINNED_CV}, "
           f"r={PINNED_R}, n={PINNED_N}")
-    storm_labels = ", ".join(s["label"] for s in storms_to_run)
     print(f"Running this EXACT point (excluded from every LHS sweep) under "
-          f"{len(storms_to_run)} storm forcing(s) [{storm_labels}], "
-          f"{args.timeout}s timeout each.")
+          f"all 3 storm forcings, {args.timeout}s timeout each.")
     print(f"{'='*70}\n")
 
     results = []
-    for storm_cfg in storms_to_run:
+    for storm_cfg in STORMS:
         label = storm_cfg["label"]
         print(f"\n--- {label} ({storm_cfg['scale']:.0%} rain) ---")
         t0 = time.time()
@@ -435,8 +409,8 @@ def main():
                 metrics["storm_scale"] = storm_cfg["scale"]
                 results.append(metrics)
                 print(f"  SUCCESS  ({elapsed/60:.1f} min)  "
-                      f"PBIAS={metrics['pbias_pct']:+.2f}%  KGE={metrics['kge']:.4f}  "
-                      f"r={metrics['kge_r']:.4f}  alpha={metrics['kge_alpha']:.4f}  "
+                      f"PBIAS={metrics['pbias_pct']:+.2f}%  KGE'={metrics['kge_2012']:.4f}  "
+                      f"r={metrics['kge_r']:.4f}  gamma={metrics['kge_gamma']:.4f}  "
                       f"beta={metrics['kge_beta']:.4f}")
             else:
                 reason = "wall-clock timeout" if timed_out else (
@@ -462,18 +436,19 @@ def main():
     print(f"\n{'='*70}")
     print("SUMMARY -- actual metrics AT the true point, direct (not interpolated)")
     print(f"{'='*70}")
-    cols = ["storm_label", "pbias_pct", "kge", "kge_r", "kge_alpha", "kge_beta",
-            "nse", "peak_error_pct", "volume_error_pct"]
+    cols = [c for c in ["storm_label", "pbias_pct", "kge_2012", "kge_r", "kge_gamma", "kge_beta",
+                         "nse", "peak_error_pct", "volume_error_pct", "kge", "kge_alpha"]
+            if c in df.columns]
     print(df[cols].round(4).to_string(index=False))
 
     print(f"\nInterpretation guide:")
-    print(f"  - If PBIAS ~ 0% and KGE ~ 1.0, alpha ~ 1.0 for all three: the true")
+    print(f"  - If PBIAS ~ 0% and KGE' ~ 1.0, gamma ~ 1.0 for all three: the true")
     print(f"    point IS the perfect self-consistent reproduction expected from a")
     print(f"    deterministic model run at its own truth-generating parameters.")
     print(f"    That means the earlier plots' appearance of X sitting 'off the")
     print(f"    ridge' is a griddata interpolation artifact from sparse sampling")
     print(f"    near that exact coordinate, NOT a real displacement.")
-    print(f"  - If PBIAS/KGE/alpha come back meaningfully off-ideal here too: the")
+    print(f"  - If PBIAS/KGE'/gamma come back meaningfully off-ideal here too: the")
     print(f"    off-ridge appearance in the plots is real, not an artifact -- worth")
     print(f"    investigating further (build pipeline mismatch vs. truth-generation")
     print(f"    pipeline, or a genuine non-determinism/versioning issue).")

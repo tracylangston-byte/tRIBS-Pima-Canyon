@@ -363,7 +363,7 @@ def main():
         description="Single-point validation (INTERP variant): run tRIBS at "
                     "the exact true (Ks_mult=7.0x, f_RS_abs=0.012) point "
                     "under all three storm forcings and report actual (not "
-                    "interpolated-contour) PBIAS/KGE/r/alpha/beta, scored "
+                    "interpolated-contour) PBIAS/KGE'/r/gamma/beta, scored "
                     "with time-interpolation resampling of the sim series "
                     "instead of mean-aggregation.")
     parser.add_argument("--timeout", type=int, default=300,
@@ -411,8 +411,8 @@ def main():
                 metrics["storm_scale"] = storm_cfg["scale"]
                 results.append(metrics)
                 print(f"  SUCCESS  ({elapsed/60:.1f} min)  "
-                      f"PBIAS={metrics['pbias_pct']:+.2f}%  KGE={metrics['kge']:.4f}  "
-                      f"r={metrics['kge_r']:.4f}  alpha={metrics['kge_alpha']:.4f}  "
+                      f"PBIAS={metrics['pbias_pct']:+.2f}%  KGE'={metrics['kge_2012']:.4f}  "
+                      f"r={metrics['kge_r']:.4f}  gamma={metrics['kge_gamma']:.4f}  "
                       f"beta={metrics['kge_beta']:.4f}")
             else:
                 reason = "wall-clock timeout" if timed_out else (
@@ -439,8 +439,9 @@ def main():
     print("SUMMARY (INTERP RESAMPLE) -- actual metrics AT the true point, "
           "direct (not interpolated-contour)")
     print(f"{'='*70}")
-    cols = ["storm_label", "pbias_pct", "kge", "kge_r", "kge_alpha", "kge_beta",
-            "nse", "peak_error_pct", "volume_error_pct"]
+    cols = [c for c in ["storm_label", "pbias_pct", "kge_2012", "kge_r", "kge_gamma", "kge_beta",
+                         "nse", "peak_error_pct", "volume_error_pct", "kge", "kge_alpha"]
+            if c in df.columns]
     print(df[cols].round(4).to_string(index=False))
 
     print(f"\nInterpretation guide:")

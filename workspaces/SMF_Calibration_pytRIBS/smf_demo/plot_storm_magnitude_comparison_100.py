@@ -7,6 +7,13 @@ storm125 (1.25x rain). Tests whether the Ks-f equifinality "swoosh"
 shifts position and/or changes curvature with storm magnitude, per the
 Handoff: Multi-Storm-Magnitude Test of the Ks-f Equifinality "Swoosh".
 
+UPDATED (Handoff_KGE2012Transition_v2.md): reads the `_RESCORED.csv`
+family (resampling-fix applied) and uses the Kling et al. (2012)
+formulation throughout -- KGE_2012 (`kge_2012`) replaces KGE_2009 (`kge`)
+as the composite, and gamma (`kge_gamma`) replaces alpha (`kge_alpha`) as
+the plotted variability component. r and beta are unchanged between
+formulations. Figure A's bottom row (previously alpha) now shows gamma.
+
 UNLIKE plot_ks_f_series_comparison.py (which independently interpolates
 two series with potentially different bounds/n and compares only the
 resulting surfaces), this script assumes all available series share
@@ -17,10 +24,15 @@ addition to the surface-level view. This is only valid if storm080,
 LHS_PARAMS bounds (Ks_mult 3.0-9.5, f_RS_abs 0.004-0.05) and n=200,
 seed=42, per the storm080/storm125 handoff.
 
-This script is written to degrade gracefully: it will run a 2-way 
-comparison on whichever CSVs it finds (e.g. storm080 vs storm125 alone) 
-and automatically upgrade to the full 3-way analysis (including 
-joint-feasibility narrowing) once all three are present.
+IMPORTANT -- one input does not exist yet:
+    lhs_results_synth_Ks_f_100_narrow.csv (the "100_narrow" sweep) has
+    not been run as of writing this script. This script is written to
+    degrade gracefully: it will run a 2-way comparison on whichever
+    CSVs it finds (e.g. storm080 vs storm125 alone) and automatically
+    upgrade to the full 3-way analysis (including joint-feasibility
+    narrowing) once all three are present. If the 100_narrow sweep ends
+    up using a different filename/label than assumed below, edit the
+    SERIES config block.
 
 Usage (run from the smf_demo directory):
     python plot_storm_magnitude_comparison_100.py
@@ -30,7 +42,7 @@ Produces, saved to:
         storm_series_summary_{tag}.csv
         storm_pairwise_delta_summary_{tag}.csv
     calibration_work/03_comparisons/sensitivity_plots/Comparisons/
-        fig_storm_kge_alpha_{tag}.png
+        fig_storm_kge_gamma_{tag}.png
         fig_storm_swoosh_overlay_{tag}.png
         fig_storm_delta_pbias_{tag}.png
         fig_storm_joint_feasibility_{tag}.png   (only if all 3 present)
@@ -54,13 +66,13 @@ from scipy.stats import pearsonr
 # =======================================================================
 SERIES = {
     "080":  {"label": "storm080 (0.8x rain)",
-             "csv": "lhs_results_synth_Ks_f_100_storm080.csv",
+             "csv": "lhs_results_synth_Ks_f_100_storm080_RESCORED.csv",
              "storm_scale": 0.80, "color": "#4c72b0"},
     "100n": {"label": "100_narrow (1.0x rain, matched bounds)",
-             "csv": "lhs_results_synth_Ks_f_100_narrow.csv",
+             "csv": "lhs_results_synth_Ks_f_100_narrow_RESCORED.csv",
              "storm_scale": 1.00, "color": "#55a868"},
     "125":  {"label": "storm125 (1.25x rain)",
-             "csv": "lhs_results_synth_Ks_f_100_storm125.csv",
+             "csv": "lhs_results_synth_Ks_f_100_storm125_RESCORED.csv",
              "storm_scale": 1.25, "color": "#c44e52"},
 }
 
@@ -70,7 +82,10 @@ PBIAS_TOL = 2.0      # |PBIAS| <= this (%) counts as "feasible" / near-zero
 N_GRID = 200
 KGE_CLIP = (-0.3, 1.0)
 COMPARISON_SUBDIR = "Comparisons"
-REQUIRED = ["Ks_mult", "f_RS_abs", "pbias_pct", "kge", "kge_alpha", "kge_beta", "kge_r", "nse"]
+# kge_2012/kge_gamma (Kling et al. 2012) are now required; kge/kge_alpha
+# (2009) are no longer required for any figure but are still read for the
+# summary-CSV audit column if present.
+REQUIRED = ["Ks_mult", "f_RS_abs", "pbias_pct", "kge_2012", "kge_gamma", "kge_beta", "kge_r", "nse"]
 KS_KEY_DECIMALS = 6
 F_KEY_DECIMALS = 8
 MIN_CONTOUR_PTS_FOR_CURVATURE_FIT = 8
@@ -156,7 +171,7 @@ def interpolate_surfaces(df):
     points_norm = np.column_stack([norm_ks(df["Ks_mult"].values),
                                     norm_logf(df["f_RS_abs"].values)])
     surfs = {}
-    for col in ("pbias_pct", "kge", "kge_alpha"):
+    for col in ("pbias_pct", "kge_2012", "kge_gamma"):
         surfs[col] = griddata(points_norm, df[col].values, (KS_NORM, F_NORM), method="cubic")
     return surfs
 
@@ -191,12 +206,12 @@ data = {}
 for key, df in available.items():
     surfs = interpolate_surfaces(df)
     curv_coeffs, curv_r2, curv_npts, n_segs = fit_swoosh_curvature(surfs["pbias_pct"])
-    best_idx = df["kge"].values.argmax()
+    best_idx = df["kge_2012"].values.argmax()
     valid = ~np.isnan(surfs["pbias_pct"])
     feasible_mask = (np.abs(surfs["pbias_pct"]) <= PBIAS_TOL) & valid
     area_frac_feasible = feasible_mask.sum() / valid.sum() if valid.sum() else np.nan
-    r_ks, _ = pearsonr(df["Ks_mult"], df["kge"])
-    r_f, _ = pearsonr(df["f_RS_abs"], df["kge"])
+    r_ks, _ = pearsonr(df["Ks_mult"], df["kge_2012"])
+    r_f, _ = pearsonr(df["f_RS_abs"], df["kge_2012"])
     data[key] = dict(
         df=df, surfs=surfs, best_idx=best_idx,
         curv_coeffs=curv_coeffs, curv_r2=curv_r2, curv_npts=curv_npts, n_segs=n_segs,
@@ -204,7 +219,7 @@ for key, df in available.items():
         r_ks=r_ks, r_f=r_f,
     )
     curv_str = f"quad_coef={curv_coeffs[0]:.3f} (R2={curv_r2:.3f}, n={curv_npts}pts)" if curv_coeffs is not None else "curvature fit skipped (short/absent contour)"
-    print(f"  {SERIES[key]['label']}: best KGE={df['kge'].values[best_idx]:.4f}  "
+    print(f"  {SERIES[key]['label']}: best KGE_2012={df['kge_2012'].values[best_idx]:.4f}  "
           f"area_frac |PBIAS|<={PBIAS_TOL}%={area_frac_feasible:.3f}  "
           f"swoosh branches={n_segs}  {curv_str}")
 
@@ -215,7 +230,7 @@ keyed = available  # already has _ks_key/_f_key from load loop
 
 pairwise_merged = {}
 for a, b in combinations(available.keys(), 2):
-    cols_common = ["_ks_key", "_f_key", "pbias_pct", "kge", "kge_alpha"]
+    cols_common = ["_ks_key", "_f_key", "pbias_pct", "kge_2012", "kge_gamma"]
     m = pd.merge(
         keyed[a][["_ks_key", "_f_key", "Ks_mult", "f_RS_abs"] + cols_common[2:]],
         keyed[b][cols_common],
@@ -236,8 +251,8 @@ if len(available) == 3:
     keys3 = list(available.keys())
     m3 = keyed[keys3[0]][["_ks_key", "_f_key", "Ks_mult", "f_RS_abs"]].copy()
     for k in keys3:
-        sub = keyed[k][["_ks_key", "_f_key", "pbias_pct", "kge"]].rename(
-            columns={"pbias_pct": f"pbias_{k}", "kge": f"kge_{k}"})
+        sub = keyed[k][["_ks_key", "_f_key", "pbias_pct", "kge_2012"]].rename(
+            columns={"pbias_pct": f"pbias_{k}", "kge_2012": f"kge_{k}"})
         m3 = pd.merge(m3, sub, on=["_ks_key", "_f_key"], how="inner")
     print(f"  3-way pointwise match: {len(m3)} coordinates present in all three sweeps")
 
@@ -296,15 +311,15 @@ if len(available) == 3:
           f"(<1.0 means multi-event calibration shrinks the equifinal region)")
 
 # =======================================================================
-# FIGURE A: KGE (top row) + alpha (bottom row), one column per series
+# FIGURE A: KGE_2012 (top row) + gamma (bottom row), one column per series
 # =======================================================================
 n_cols = len(available)
 fig, axes = plt.subplots(2, n_cols, figsize=(6.5 * n_cols, 11), squeeze=False)
 
 kge_norm = mcolors.Normalize(vmin=KGE_CLIP[0], vmax=KGE_CLIP[1])
-alpha_all = np.concatenate([data[k]["df"]["kge_alpha"].values for k in available])
-alpha_dev = max(abs(alpha_all.min() - 1), abs(alpha_all.max() - 1))
-alpha_norm = mcolors.TwoSlopeNorm(vmin=1 - alpha_dev, vcenter=1, vmax=1 + alpha_dev)
+gamma_all = np.concatenate([data[k]["df"]["kge_gamma"].values for k in available])
+gamma_dev = max(abs(gamma_all.min() - 1), abs(gamma_all.max() - 1))
+gamma_norm = mcolors.TwoSlopeNorm(vmin=1 - gamma_dev, vcenter=1, vmax=1 + gamma_dev)
 
 for col, key in enumerate(available):
     d = data[key]
@@ -312,11 +327,11 @@ for col, key in enumerate(available):
     cfg = SERIES[key]
 
     ax = axes[0, col]
-    cf = ax.contourf(KS_GRID, F_GRID, d["surfs"]["kge"], levels=20,
+    cf = ax.contourf(KS_GRID, F_GRID, d["surfs"]["kge_2012"], levels=20,
                       cmap="RdYlGn", norm=kge_norm, extend="min")
     ax.contour(KS_GRID, F_GRID, d["surfs"]["pbias_pct"], levels=[0],
                colors="white", linewidths=2.0, linestyles="--")
-    ax.scatter(df["Ks_mult"], df["f_RS_abs"], c=df["kge"], cmap="RdYlGn", norm=kge_norm,
+    ax.scatter(df["Ks_mult"], df["f_RS_abs"], c=df["kge_2012"], cmap="RdYlGn", norm=kge_norm,
                s=14, edgecolors="white", linewidths=0.3, alpha=0.7)
     ax.scatter([df["Ks_mult"].values[d["best_idx"]]], [df["f_RS_abs"].values[d["best_idx"]]],
                s=140, marker="*", color="white", edgecolors="black", linewidths=1.3, zorder=10)
@@ -325,16 +340,16 @@ for col, key in enumerate(available):
     ax.set_yscale("log")
     ax.set_xlabel("Ks multiplier")
     ax.set_ylabel("f_RS_abs (log)")
-    ax.set_title(f"KGE -- {cfg['label']}\n"
+    ax.set_title(f"KGE' (2012) -- {cfg['label']}\n"
                  f"|PBIAS|<={PBIAS_TOL}% area frac={d['area_frac_feasible']:.2f}",
                  fontsize=10)
     if col == n_cols - 1:
-        fig.colorbar(cf, ax=list(axes[0, :]), label="KGE (clipped)", shrink=0.85)
+        fig.colorbar(cf, ax=list(axes[0, :]), label="KGE' (clipped)", shrink=0.85)
 
     ax = axes[1, col]
-    cf2 = ax.contourf(KS_GRID, F_GRID, d["surfs"]["kge_alpha"], levels=20,
-                       cmap="RdYlGn", norm=alpha_norm)
-    ax.scatter(df["Ks_mult"], df["f_RS_abs"], c=df["kge_alpha"], cmap="RdYlGn", norm=alpha_norm,
+    cf2 = ax.contourf(KS_GRID, F_GRID, d["surfs"]["kge_gamma"], levels=20,
+                       cmap="RdYlGn", norm=gamma_norm)
+    ax.scatter(df["Ks_mult"], df["f_RS_abs"], c=df["kge_gamma"], cmap="RdYlGn", norm=gamma_norm,
                s=14, edgecolors="white", linewidths=0.3, alpha=0.7)
     ax.scatter([df["Ks_mult"].values[d["best_idx"]]], [df["f_RS_abs"].values[d["best_idx"]]],
                s=140, marker="*", color="white", edgecolors="black", linewidths=1.3, zorder=10)
@@ -343,17 +358,17 @@ for col, key in enumerate(available):
     ax.set_yscale("log")
     ax.set_xlabel("Ks multiplier")
     ax.set_ylabel("f_RS_abs (log)")
-    top20 = df.nlargest(20, "kge")
-    ax.set_title(f"alpha (flashiness) -- {cfg['label']}\n"
-                 f"top-20 KGE runs: alpha={top20.kge_alpha.mean():.3f}\u00b1{top20.kge_alpha.std():.3f}",
+    top20 = df.nlargest(20, "kge_2012")
+    ax.set_title(f"gamma (2012 variability) -- {cfg['label']}\n"
+                 f"top-20 KGE' runs: gamma={top20.kge_gamma.mean():.3f}\u00b1{top20.kge_gamma.std():.3f}",
                  fontsize=10)
     if col == n_cols - 1:
-        fig.colorbar(cf2, ax=list(axes[1, :]), label="alpha (perfect=1)", shrink=0.85)
+        fig.colorbar(cf2, ax=list(axes[1, :]), label="gamma (perfect=1)", shrink=0.85)
 
 fig.suptitle(f"Storm-magnitude comparison ({', '.join(SERIES[k]['label'] for k in available)})\n"
-             "White dashed = PBIAS zero-crossing (equifinal valley)  |  star = best-KGE run  |  X = true parameter value (shared across all storms)",
+             "White dashed = PBIAS zero-crossing (equifinal valley)  |  star = best-KGE' run  |  X = true parameter value (shared across all storms)",
              fontsize=13)
-figA_path = plot_dir / f"fig_storm_kge_alpha_{tag}.png"
+figA_path = plot_dir / f"fig_storm_kge_gamma_{tag}.png"
 fig.savefig(figA_path, dpi=150, bbox_inches="tight")
 plt.close(fig)
 print(f"\n  Saved: {figA_path.name}")
@@ -466,7 +481,8 @@ for key in available:
         "n_runs": len(df),
         "truth_Ks_mult": TRUTH_KS,
         "truth_f_RS_abs": TRUTH_F,
-        "best_KGE": best["kge"],
+        "best_KGE_2012": best["kge_2012"],
+        "best_KGE_2009": best.get("kge", np.nan),  # retired formula, audit only
         "best_run_Ks_mult": best["Ks_mult"],
         "best_run_f_RS_abs": best["f_RS_abs"],
         "best_run_PBIAS_pct": best["pbias_pct"],

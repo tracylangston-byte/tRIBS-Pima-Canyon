@@ -275,6 +275,34 @@ METRIC_KEY = {
         "ideal":        1.0,
         "direction":    +1,
     },
+    "kge_gamma": {
+        "code_name":    "kge_gamma",
+        "display_name": "KGE variability ratio (CV-based, Kling et al. 2012)",
+        "symbol":       "\u03b3",                  # γ
+        "units":        "",
+        "phase":        "summary",
+        "ideal":        1.0,
+        "direction":    +1,
+        "notes":        "Replaces kge_alpha in the 2012 formulation; "
+                         "gamma = kge_alpha / kge_beta exactly. Decouples "
+                         "the 'shape' term from volume bias (see "
+                         "Handoff_KGE2012Transition_v1.md).",
+    },
+    "kge_2012": {
+        "code_name":    "kge_2012",
+        "display_name": "Kling-Gupta Efficiency (2012, Kling et al.)",
+        "symbol":       "KGE\u2032",                # KGE′
+        "units":        "",
+        "phase":        "summary",
+        "ideal":        1.0,
+        "direction":    +1,
+        "notes":        "1 - sqrt((r-1)^2 + (gamma-1)^2 + (beta-1)^2). "
+                         "Composite metric and best-fit point are "
+                         "essentially unchanged vs. kge (r=0.995 on "
+                         "Series 100); use for shape/bias decomposition "
+                         "work where kge_alpha/kge_beta collinearity "
+                         "(r=0.99) would be misleading.",
+    },
     "nse": {
         "code_name":    "nse",
         "display_name": "Nash-Sutcliffe Efficiency",

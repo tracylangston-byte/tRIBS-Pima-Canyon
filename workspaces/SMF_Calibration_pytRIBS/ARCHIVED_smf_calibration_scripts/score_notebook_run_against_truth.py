@@ -192,6 +192,12 @@ r     = np.corrcoef(sim, obs)[0, 1]
 alpha = np.std(sim) / np.std(obs)
 beta  = np.mean(sim) / np.mean(obs)
 kge   = 1 - np.sqrt((r - 1) ** 2 + (alpha - 1) ** 2 + (beta - 1) ** 2)
+
+# Kling et al. (2012) modified KGE, added alongside the 2009 formula
+# per Handoff_KGE2012Transition_v1.md. gamma = alpha/beta exactly.
+gamma    = alpha / beta
+kge_2012 = 1 - np.sqrt((r - 1) ** 2 + (gamma - 1) ** 2 + (beta - 1) ** 2)
+
 nse   = 1 - (np.sum((sim - obs) ** 2) / np.sum((obs - obs.mean()) ** 2))
 pbias = 100 * (np.sum(sim - obs) / np.sum(obs))
 rmse  = np.sqrt(np.mean((sim - obs) ** 2))
@@ -203,6 +209,7 @@ peak_error_pct       = (sim_peak - obs_peak) / obs_peak * 100
 print(f"\n=== NOTEBOOK-EXECUTION run at the true point, scored against 100_narrow truth ===")
 print(f"  PBIAS         {pbias:+.4f} %")
 print(f"  KGE           {kge:.4f}   (r={r:.4f}, alpha={alpha:.4f}, beta={beta:.4f})")
+print(f"  KGE_2012      {kge_2012:.4f}   (r={r:.4f}, gamma={gamma:.4f}, beta={beta:.4f})")
 print(f"  NSE           {nse:.4f}")
 print(f"  RMSE          {rmse:.4f} m3/s")
 print(f"  Peak error    {peak_error_pct:+.2f} %   "

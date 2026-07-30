@@ -397,9 +397,9 @@ def run_and_score():
                          .resample('5min')
                          .interpolate(method='time'))
     else:
-        obs_resampled = obs_df['Observed_CMS'].resample('5min').mean()
+        obs_resampled = obs_df['Observed_CMS'].resample('5min').interpolate(method='time')
 
-    sim_resampled = strmflw_sim['Qstrm_m3s'].resample('5min').mean()
+    sim_resampled = strmflw_sim['Qstrm_m3s'].resample('5min').interpolate(method='time')
 
     compare_df = pd.DataFrame({
         'Observed':  obs_resampled,
@@ -451,6 +451,13 @@ def run_and_score():
     beta  = np.mean(sim) / np.mean(obs)
     kge   = 1 - np.sqrt((r - 1) ** 2 + (alpha - 1) ** 2 + (beta - 1) ** 2)
 
+    # Kling et al. (2012) modified KGE: replaces alpha (std ratio, which is
+    # collinear with beta) with gamma (CV ratio), decoupling the "shape"
+    # term from bias. gamma = alpha/beta exactly. Added alongside the 2009
+    # formula (not replacing it) per Handoff_KGE2012Transition_v1.md.
+    gamma    = alpha / beta
+    kge_2012 = 1 - np.sqrt((r - 1) ** 2 + (gamma - 1) ** 2 + (beta - 1) ** 2)
+
     # ------------------------------------------------------------------
     # Compute phase-specific metrics (5 new)
     # ------------------------------------------------------------------
@@ -490,6 +497,8 @@ def run_and_score():
         "kge_r":               r,
         "kge_alpha":           alpha,
         "kge_beta":            beta,
+        "kge_gamma":           gamma,
+        "kge_2012":            kge_2012,
 
         # --- phase-specific metrics (hydrograph_metrics_table) ---
         "threshold_m3s":                   phase_metrics["threshold_m3s"],
