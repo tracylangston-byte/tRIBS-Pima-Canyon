@@ -18,11 +18,48 @@ longer drive any figure. See the handoff doc for why: alpha and beta were
 ~99% collinear in this dataset (alpha was re-reporting volume bias, not
 independent shape information); gamma decouples that (r~0.37).
 
+UPDATED (2026-07-30, this version): folds in two things that were
+previously separate, one-off analyses, per Tracy's preference for complete
+rewrites over accumulating separate patch scripts once enough has changed:
+
+  1. The ridge-width-vs-f measurement, formerly the standalone script
+     `measure_ridge_width_vs_f.py`, now FIGURE 9 + `ridge_width_vs_f.csv`.
+     That script is fully superseded by this one and can be deleted/
+     archived -- nothing here depends on it still existing.
+  2. FIGURE 10 (new): top row is a KGE'-equivalent composite computed from
+     gamma and beta ONLY, with r left out entirely (`1 - sqrt((gamma-1)^2 +
+     (beta-1)^2)`) -- since kge_r sits close to 1.0 almost everywhere in
+     this sweep (see fig3), this tests directly whether r is contributing
+     anything to the ridge's shape, rather than just assuming it from the
+     flat r contour. Bottom row is a literal overlap map of where beta and
+     gamma are EACH individually near-ideal (|value-1| <= 0.02, the same
+     tolerance already used elsewhere in this project for |PBIAS| <= 2%),
+     shaded separately, with their intersection shaded a third way -- the
+     direct visual for why the composite optimum sits where it does: at
+     the overlap of "volume is right" (broad, follows the diagonal ridge)
+     and "shape is right" (narrower, does NOT follow the diagonal ridge --
+     see fig4's closed-island shape and the Series100 phase-conclusions
+     doc, Section 2.2a, for why that's expected rather than a bug).
+
+  A NOTE ON A DELIBERATE DEPARTURE FROM THIS SCRIPT'S ORIGINAL DESIGN:
+  the paragraph below (previously) said the script was "fully data-driven
+  ... so no truth values are hardcoded in the plotting logic itself." That
+  is still true for figures 1-8. It is NOT true for figures 9 and 10:
+  both need TRUE_KS/TRUE_F (defined in CONFIG below) to mark the true
+  parameter point and to center the f-slice cross-sections on the actual
+  true f. This is a deliberate scope difference, not an oversight --
+  figures 9 and 10 only make sense in a synthetic-truth-inversion context
+  where the true answer is known and the question is whether the sweep
+  recovers it, whereas figures 1-8 are written to remain meaningful even
+  if this script were ever pointed at a real (non-synthetic, truth-unknown)
+  sweep. If that ever happens, figures 9 and 10 should be skipped or
+  reworked, not silently fed a placeholder true value.
+
 This is a direct adaptation of plot_lhs_Ks_f_97log.py -- same methodology,
-same normalized-coordinate interpolation fix, same 8-figure output set.
-The script is otherwise fully data-driven: the best-run, axis ranges, and
-interpolation grids are all computed from whatever's in the CSV, so no
-truth values are hardcoded in the plotting logic itself.
+same normalized-coordinate interpolation fix, same original 8-figure output
+set, now extended with figures 9-10 above. The script is otherwise fully
+data-driven for figures 1-8: the best-run, axis ranges, and interpolation
+grids are all computed from whatever's in the CSV.
 
 KGE_CLIP/NSE_CLIP/PBIAS_CLIP colorbar ranges are CARRIED OVER UNCHANGED
 from Series 97log, where they were tuned to that series' old-truth Ks>=9x
@@ -37,7 +74,7 @@ starting point.)
 Usage (run from the smf_demo directory):
     python plot_lhs_Ks_f_100.py
 
-Produces 8 figures + 1 CSV saved to:
+Produces 11 image files + 2 CSVs saved to:
     calibration_work/03_comparisons/sensitivity_plots/lhs_Ks_f_100/
 
 Figure list:
@@ -50,13 +87,23 @@ Figure list:
     fig7_all_metrics_panel_linear.png  -- all six metrics, 2x3, linear f axis
     fig7_all_metrics_panel_log.png     -- all six metrics, 2x3, log10 f axis
     fig8_raw_scatter_diagnostic.png    -- raw (no-interpolation) KGE_2012/PBIAS vs Ks, binned by f
+    fig9_ridge_width_vs_f.png          -- (A) KGE' vs Ks cross-sections at fixed
+                                           f-slices incl. true f, shaded >=0.8 band;
+                                           (B) that band's width (Ks units) vs f,
+                                           dense curve, true f marked
+    fig10_beta_gamma_intersection.png  -- (top) KGE' with r excluded, from gamma+beta
+                                           only, linear|log; (bottom) literal overlap
+                                           of beta-feasible and gamma-feasible regions,
+                                           linear|log
     top20_pbias_synth_100.csv     -- 20 runs with smallest |PBIAS| (includes retired kge/kge_alpha for audit)
+    ridge_width_vs_f.csv          -- checkpoint table at 7 reference f-slices (see fig9)
 """
 
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+import matplotlib.patches as mpatches
 from pathlib import Path
 from scipy.interpolate import griddata
 
@@ -79,6 +126,31 @@ NSE_CLIP   = (-0.3, 1.0)     # extend='min'
 PBIAS_CLIP = (-50.0, 50.0)   # extend='both'
 
 TOP_N_TABLE = 20
+
+# -- True parameters: ONLY used by figures 9-10 (see the docstring's note
+# on why this departs from the rest of the script being data-driven).
+TRUE_KS = 7.0
+TRUE_F  = 0.012
+
+# -- Figure 9 (ridge width vs f) config -- carried over from the retired
+# measure_ridge_width_vs_f.py unchanged.
+RIDGE_KGE_THRESHOLD = 0.8   # matches the threshold the v6 handoff originally used
+N_GRID_KS_FINE       = 400   # finer than the N_GRID=200 used for the 2D contour
+                              # grids below -- fig9 only needs 1D cross-sections,
+                              # not a full 2D contourf render, so the extra
+                              # resolution is cheap
+N_F_CURVE            = 60    # dense log-spaced f values for fig9 panel B's curve
+REFERENCE_F_SLICES = [0.006, 0.008, 0.010, 0.012, 0.015, 0.020, 0.030]  # checkpoint table
+CROSS_SECTION_SLICES = [0.006, 0.009, TRUE_F, 0.015, 0.020, 0.030]     # fig9 panel A
+
+# -- Figure 10 (beta/gamma intersection) config.
+# Same +/-0.02 tolerance applied to BOTH beta and gamma, deliberately --
+# it's the same magnitude as the |PBIAS| <= 2% convention already used
+# elsewhere in this project (PBIAS_pct = 100*(beta-1), so |beta-1| <= 0.02
+# IS |PBIAS| <= 2%), applied symmetrically to gamma so the two feasibility
+# regions are being judged by the same yardstick rather than two
+# differently-chosen cutoffs.
+BETA_GAMMA_FEASIBLE_TOL = 0.02
 
 # -----------------------------------------------------------------------
 # PATHS
@@ -138,6 +210,11 @@ r_vals     = df["kge_r"].values
 gamma_vals = df["kge_gamma"].values  # replaces alpha as the plotted variability term
 beta_vals  = df["kge_beta"].values
 
+# -- Figure 10 panel A: KGE' with r excluded, computed directly from the
+# already-extracted gamma/beta arrays -- no new interpolation, pure numpy.
+kge_no_r_vals = 1 - np.sqrt((gamma_vals - 1) ** 2 + (beta_vals - 1) ** 2)
+df["kge_no_r"] = kge_no_r_vals
+
 best_idx    = np.argmax(kge_vals)
 best_ks     = ks_pts[best_idx]
 best_second = second_pts[best_idx]
@@ -182,6 +259,10 @@ KS_GRID_LOG, F_GRID_LOG = np.meshgrid(ks_grid_1d, f_log_1d)
 # itself was stratified. Only the VALUES fed to griddata change here;
 # the actual (x, y) grid positions used for plotting (KS_GRID_LIN/LOG,
 # F_GRID_LIN/LOG) are untouched.
+#
+# NOTE: this same points_norm / normalize_ks / normalize_logf machinery
+# is reused below by figures 9 and 10 -- it is defined exactly once, here,
+# for the whole script.
 # ------------------------------------------------------------------
 def normalize_ks(ks):
     return (ks - ks_pts.min()) / (ks_pts.max() - ks_pts.min())
@@ -221,6 +302,13 @@ SURFACES_LOG = {
     "beta":  interp_surface(beta_vals,  KS_GRID_LOG_NORM, F_GRID_LOG_NORM),
 }
 
+# -- Figure 10 panel A surface: derived directly from the gamma/beta
+# surfaces just built above -- pure numpy, no new griddata calls.
+SURFACES_LIN["kge_no_r"] = 1 - np.sqrt((SURFACES_LIN["gamma"] - 1) ** 2 +
+                                        (SURFACES_LIN["beta"] - 1) ** 2)
+SURFACES_LOG["kge_no_r"] = 1 - np.sqrt((SURFACES_LOG["gamma"] - 1) ** 2 +
+                                        (SURFACES_LOG["beta"] - 1) ** 2)
+
 gamma_dev = max(abs(gamma_vals.min() - 1), abs(gamma_vals.max() - 1))
 beta_dev  = max(abs(beta_vals.min() - 1), abs(beta_vals.max() - 1))
 
@@ -230,6 +318,8 @@ YLABEL = SECOND_LABEL
 SCATTER_KW = dict(s=16, edgecolors='white', linewidths=0.4, alpha=0.7, zorder=5)
 BEST_KW    = dict(s=110, marker='*', color='white', edgecolors='black',
                   linewidths=1.2, zorder=10)
+TRUE_KW    = dict(s=140, marker='X', color='white', edgecolors='black',
+                  linewidths=1.5, zorder=11)
 
 
 def save_fig(fig, filename):
@@ -279,7 +369,8 @@ def draw_metric_panel(ax, key, cmap, norm, cbar_label, log_scale,
 
 
 COL_MAP = {"kge": "kge_2012", "nse": "nse", "pbias": "pbias_pct",
-           "r": "kge_r", "gamma": "kge_gamma", "beta": "kge_beta"}
+           "r": "kge_r", "gamma": "kge_gamma", "beta": "kge_beta",
+           "kge_no_r": "kge_no_r"}
 
 # -----------------------------------------------------------------------
 # FIGURE 1: KGE_2012 -- linear | log, clipped colorbar
@@ -469,4 +560,200 @@ fig.suptitle(
 fig.tight_layout()
 save_fig(fig, "fig8_raw_scatter_diagnostic.png")
 
-print(f"\nAll figures + top-20 table saved to:\n  {plot_dir}")
+# -----------------------------------------------------------------------
+# FIGURE 9: RIDGE WIDTH VS f (folded in from measure_ridge_width_vs_f.py)
+#
+# Reuses points_norm / normalize_ks / normalize_logf / kge_vals already
+# built above -- no re-import, no duplicate interpolation setup. Only new
+# thing needed is a finer 1D Ks grid for clean cross-section reads.
+# -----------------------------------------------------------------------
+ks_grid_1d_fine = np.linspace(ks_pts.min(), ks_pts.max(), N_GRID_KS_FINE)
+
+
+def kge_cross_section(f_slice):
+    """Interpolated KGE_2012 vs Ks at a single fixed f value (1D slice
+    through the same normalized-coordinate cubic surface used for the 2D
+    contours above)."""
+    ks_norm = normalize_ks(ks_grid_1d_fine)
+    f_norm  = np.full_like(ks_grid_1d_fine, normalize_logf(f_slice))
+    return griddata(points_norm, kge_vals, (ks_norm, f_norm), method='cubic')
+
+
+def ridge_stats(f_slice, threshold=RIDGE_KGE_THRESHOLD):
+    """Ridge peak Ks, peak KGE_2012, and >=threshold band width (Ks units)
+    at one f-slice. Returns (nan, nan, nan) if the slice falls outside the
+    convex hull of sampled points (griddata returns all-NaN)."""
+    kge_line = kge_cross_section(f_slice)
+    valid = ~np.isnan(kge_line)
+    if valid.sum() == 0:
+        return np.nan, np.nan, np.nan
+    ks_valid, kge_valid = ks_grid_1d_fine[valid], kge_line[valid]
+    peak_idx = np.argmax(kge_valid)
+    peak_ks, peak_kge = ks_valid[peak_idx], kge_valid[peak_idx]
+    above = ks_valid[kge_valid >= threshold]
+    width = (above.max() - above.min()) if len(above) > 0 else 0.0
+    return peak_ks, peak_kge, width
+
+
+# -- checkpoint table
+ridge_rows = []
+for f_slice in REFERENCE_F_SLICES:
+    peak_ks, peak_kge, width = ridge_stats(f_slice)
+    ridge_rows.append({
+        "f_slice": f_slice,
+        "ridge_peak_Ks": peak_ks,
+        "peak_KGE_2012": peak_kge,
+        f"KGE_2012_ge_{RIDGE_KGE_THRESHOLD}_band_width_Ks_units": width,
+    })
+
+ridge_table = pd.DataFrame(ridge_rows)
+ridge_table_path = plot_dir / "ridge_width_vs_f.csv"
+ridge_table.to_csv(ridge_table_path, index=False)
+print(f"\nRidge width checkpoint table -> {ridge_table_path.name}")
+print(ridge_table.to_string(index=False))
+
+# -- dense curve for panel B
+f_curve = np.logspace(np.log10(second_pts.min()), np.log10(second_pts.max()), N_F_CURVE)
+curve_rows = [ridge_stats(f) for f in f_curve]
+peak_ks_curve, peak_kge_curve, width_curve = map(np.array, zip(*curve_rows))
+
+fig, (ax_a, ax_b) = plt.subplots(1, 2, figsize=(15, 6))
+
+colors = plt.cm.viridis(np.linspace(0.1, 0.9, len(CROSS_SECTION_SLICES)))
+for f_slice, color in zip(CROSS_SECTION_SLICES, colors):
+    kge_line = kge_cross_section(f_slice)
+    is_true_f = np.isclose(f_slice, TRUE_F)
+    label = f"f={f_slice:g}" + ("  (true f)" if is_true_f else "")
+    ax_a.plot(ks_grid_1d_fine, kge_line, color=color,
+              linewidth=2.4 if is_true_f else 1.3, label=label)
+    above = kge_line >= RIDGE_KGE_THRESHOLD
+    if np.any(above):
+        ax_a.fill_between(ks_grid_1d_fine, RIDGE_KGE_THRESHOLD, kge_line, where=above,
+                           color=color, alpha=0.15)
+
+ax_a.axhline(RIDGE_KGE_THRESHOLD, color='gray', linestyle=':', linewidth=1.0,
+             label=f"KGE'={RIDGE_KGE_THRESHOLD} threshold")
+ax_a.axvline(TRUE_KS, color='black', linestyle='--', linewidth=1.0, alpha=0.6,
+             label="true Ks")
+ax_a.set_xlabel("Ks multiplier")
+ax_a.set_ylabel("KGE' (2012), interpolated cross-section")
+ax_a.set_title("(A) KGE' vs Ks at fixed f-slices\nshaded = counted in panel B's width")
+ax_a.legend(fontsize=8, loc='lower center')
+ax_a.set_ylim(0, 1.02)
+
+ax_b.plot(f_curve, width_curve, color='steelblue', linewidth=2.0)
+ax_b.axvline(TRUE_F, color='black', linestyle='--', linewidth=1.0, alpha=0.6,
+             label="true f")
+ax_b.set_xscale('log')
+ax_b.set_xlabel("f_RS_abs (log)")
+ax_b.set_ylabel(f"KGE' \u2265 {RIDGE_KGE_THRESHOLD} band width (Ks units)")
+ax_b.set_title("(B) Ridge width vs f\nwidest near true f, collapses above f~0.015")
+ax_b.legend(fontsize=9)
+
+fig.suptitle(f"Equifinality ridge width vs f -- {EVENT_LABEL}", fontsize=12)
+fig.tight_layout()
+save_fig(fig, "fig9_ridge_width_vs_f.png")
+
+# -----------------------------------------------------------------------
+# FIGURE 10: KGE' WITHOUT r (top), AND BETA/GAMMA LITERAL INTERSECTION (bottom)
+#
+# Top row: reuses draw_metric_panel exactly like figures 1-6, on the
+# "kge_no_r" surface built earlier from gamma+beta only (r excluded). Uses
+# the SAME kge_norm/colorbar range as fig1 so the two are directly
+# comparable side by side -- if r were doing anything interesting, this
+# panel would look visibly different from fig1. If it looks nearly
+# identical, that's confirmation r is contributing ~nothing, not a
+# failed test.
+#
+# Bottom row: NOT a continuous metric -- a literal overlap of two binary
+# feasibility masks (|beta-1| <= tol, |gamma-1| <= tol), shaded separately
+# with their intersection shaded a third way. This is the direct picture
+# of why the composite optimum sits where it does: at the overlap of
+# "volume is right" (broad, follows the diagonal ridge) and "shape is
+# right" (narrower, does not follow the diagonal ridge -- see fig4).
+# -----------------------------------------------------------------------
+def draw_intersection_panel(ax, log_scale, tol=BETA_GAMMA_FEASIBLE_TOL):
+    surfaces = SURFACES_LOG if log_scale else SURFACES_LIN
+    ks_g = KS_GRID_LOG if log_scale else KS_GRID_LIN
+    f_g  = F_GRID_LOG if log_scale else F_GRID_LIN
+
+    beta_mask  = (np.abs(surfaces["beta"]  - 1) <= tol).astype(float)
+    gamma_mask = (np.abs(surfaces["gamma"] - 1) <= tol).astype(float)
+    joint_mask = ((beta_mask == 1) & (gamma_mask == 1)).astype(float)
+
+    ax.contourf(ks_g, f_g, beta_mask,  levels=[0.5, 1.5], colors=['tab:blue'],   alpha=0.30)
+    ax.contourf(ks_g, f_g, gamma_mask, levels=[0.5, 1.5], colors=['tab:orange'], alpha=0.30)
+    ax.contourf(ks_g, f_g, joint_mask, levels=[0.5, 1.5], colors=['black'],      alpha=0.55)
+
+    ax.scatter(ks_pts, second_pts, s=8, color='gray', alpha=0.3, zorder=4)
+    ax.scatter([best_ks], [best_second], **BEST_KW)
+    ax.scatter([TRUE_KS], [TRUE_F], **TRUE_KW)
+
+    if log_scale:
+        ax.set_yscale('log')
+        ax.set_title("log\u2081\u2080 f axis", fontsize=10)
+    else:
+        ax.set_title("linear f axis", fontsize=10)
+
+    ax.set_xlabel(XLABEL, fontsize=10)
+    ax.set_ylabel(YLABEL, fontsize=10)
+
+
+from matplotlib.gridspec import GridSpec
+
+# Third column is narrower and reserved ONLY for the top-row colorbar and
+# the bottom-row legend -- giving both their own dedicated axes (via `cax=`
+# and a turned-off legend-holder axes) instead of letting fig.colorbar's
+# `ax=` auto-shrink and fig.legend's `loc='lower center'` fight with
+# tight_layout for space after the fact. That fight was the original cause
+# of the colorbar landing on top of the top-right panel and the legend
+# being pinned below the whole figure instead of beside it.
+fig = plt.figure(figsize=(17, 12))
+gs = GridSpec(2, 3, width_ratios=[1, 1, 0.4], wspace=0.32, hspace=0.32, figure=fig)
+
+ax_00    = fig.add_subplot(gs[0, 0])
+ax_01    = fig.add_subplot(gs[0, 1])
+ax_cbar  = fig.add_subplot(gs[0, 2])   # dedicated colorbar axes, top row only
+
+ax_10     = fig.add_subplot(gs[1, 0])
+ax_11     = fig.add_subplot(gs[1, 1])
+ax_legend = fig.add_subplot(gs[1, 2])  # dedicated legend-holder axes, bottom row only
+ax_legend.axis('off')
+
+kge_no_r_norm = kge_norm  # same clipped range as fig1, for direct comparability
+draw_metric_panel(ax_00, "kge_no_r", 'RdYlGn', kge_no_r_norm, "KGE' (no r)",
+                   log_scale=False, extend='min')
+cf_top = draw_metric_panel(ax_01, "kge_no_r", 'RdYlGn', kge_no_r_norm, "KGE' (no r)",
+                            log_scale=True, extend='min')
+fig.colorbar(cf_top, cax=ax_cbar, label="KGE' (\u03b3+\u03b2 only, r excluded)")
+ax_00.set_title("linear f axis -- KGE' (no r)", fontsize=10)
+ax_01.set_title("log\u2081\u2080 f axis -- KGE' (no r)", fontsize=10)
+
+draw_intersection_panel(ax_10, log_scale=False)
+draw_intersection_panel(ax_11, log_scale=True)
+ax_10.set_title("linear f axis -- beta/gamma overlap", fontsize=10)
+ax_11.set_title("log\u2081\u2080 f axis -- beta/gamma overlap", fontsize=10)
+
+legend_handles = [
+    mpatches.Patch(color='tab:blue', alpha=0.30,
+                    label=f"beta feasible\n(|\u03b2\u22121| \u2264 {BETA_GAMMA_FEASIBLE_TOL})"),
+    mpatches.Patch(color='tab:orange', alpha=0.30,
+                    label=f"gamma feasible\n(|\u03b3\u22121| \u2264 {BETA_GAMMA_FEASIBLE_TOL})"),
+    mpatches.Patch(color='black', alpha=0.55, label="both (joint)"),
+    plt.Line2D([0], [0], marker='*', color='w', markerfacecolor='white',
+               markeredgecolor='black', markersize=12, linestyle='None', label="best KGE' run"),
+    plt.Line2D([0], [0], marker='X', color='w', markerfacecolor='white',
+               markeredgecolor='black', markersize=11, linestyle='None', label="true parameters"),
+]
+ax_legend.legend(handles=legend_handles, loc='center', fontsize=9, frameon=False,
+                  handletextpad=0.8, labelspacing=1.3)
+
+fig.suptitle(
+    f"KGE' without r, and the literal beta/gamma intersection -- {PAIR_LABEL}\n"
+    f"{EVENT_LABEL}  |  Top: does removing r change the ridge? (compare to fig1)  |  "
+    f"Bottom: where are volume-match and shape-match BOTH satisfied?",
+    fontsize=13
+)
+save_fig(fig, "fig10_beta_gamma_intersection.png")
+
+print(f"\nAll figures + tables saved to:\n  {plot_dir}")
